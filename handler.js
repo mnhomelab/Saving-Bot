@@ -335,7 +335,7 @@ async function handleMessage(phone, text) {
         if (text === '1') { setState(phone, 'select_month', { mode: 'monthly' }); return screenSelectMonth('Monthly Entry › Select Month'); }
         if (text === '2') { setState(phone, 'budget_select_field'); return screenBudgetSelectField(); }
         if (text === '3') { setState(phone, 'summary_type'); return screenSummaryType(); }
-        if (text === '4') { clearSession(phone); return { type: 'file', path: EXCEL_PATH, caption: '📎 *Saving-2026.xlsx*\nSavingHomeLab — Your budget spreadsheet.' }; }
+        if (text === '4') { clearSession(phone); return { type: 'file', path: getExcelPath(), caption: `📎 *Saving-${getActiveYear()}.xlsx*` }; }
         if (text === '5') { setState(phone, 'report_select'); return screenReportSelect(); }
         if (text === '6') { setState(phone, 'new_year_enter'); return [
             `📋 *Create New Year Template*`,

@@ -258,6 +258,7 @@ function formatSummary(title, d) {
         `💵 *Petty Cash*`,
         LINE,
         `  Available     *${Nf(d.pettyCashAvailable)}*`,
+        `  Used          *${Nf(d.pettyCashUsed)}*`,
         `  Left          *${Nf(d.pettyCashLeft)}*`,
         ``,
         `⚖️ *Balance*`,
@@ -449,13 +450,15 @@ async function handleMessage(phone, text) {
             const yr = getActiveYear();
             clearSession(phone);
             const Nf = n => (n || 0).toLocaleString();
+            const sg = n => n >= 0 ? '+' : '';
             const monthLines = MONTHS.map(m => {
                 const md = d.monthly[m];
-                if (!md || (md.income === 0 && md.expenses === 0)) return null;
-                const s = md.net >= 0 ? '+' : '';
-                return `  ${m.padEnd(3)}  ${s}${Nf(md.net)}`;
+                if (!md || md.net === 0) return null;
+                const pcLeft = md.pettyCashLeft || 0;
+                const total = md.net + pcLeft;
+                return `  *${m}*  Net: ${sg(md.net)}${Nf(md.net)}  PC Left: ${Nf(pcLeft)}  Total: ${sg(total)}${Nf(total)}`;
             }).filter(Boolean).join('\n');
-            const breakdown = monthLines ? ['', '📅 *Monthly Net*', LINE, monthLines].join('\n') : '';
+            const breakdown = monthLines ? ['', '📅 *Month-wise Saving*', LINE, monthLines].join('\n') : '';
             const startLine = d.startingBalance ? ['', `💼 *Initial Balance:  ${Nf(d.startingBalance)}*`].join('\n') : '';
             return formatSummary(`${yr} Year Summary`, {
                 totalIncome: d.totalIncome, totalExpenses: d.totalExpenses, net: d.net,

@@ -3,22 +3,47 @@
 const fs   = require('fs');
 const path = require('path');
 
-// ── Whitelist ─────────────────────────────────────────────────────────────────
-const WHITELIST = [
-    "923111794794",     // ← YOUR number
-    "161942429786177",  // ← YOUR number (LID)
-    "9232421318958",     // ← SECOND contact's number
-    "133971645766855"   // ← SECOND contact's number (LID)
-];
+// ── Load .env ─────────────────────────────────────────────────────────────────
+// Native Node.js .env loading (v20.6+) — no dotenv package needed.
+// Falls back silently if .env is missing (e.g. values set via docker-compose env).
+try {
+    require('fs').readFileSync(path.join(__dirname, '.env'), 'utf8')
+        .split('\n')
+        .forEach(line => {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith('#')) return;
+            const eqIdx = trimmed.indexOf('=');
+            if (eqIdx === -1) return;
+            const key = trimmed.slice(0, eqIdx).trim();
+            const val = trimmed.slice(eqIdx + 1).trim();
+            if (key && !(key in process.env)) process.env[key] = val;
+        });
+} catch { /* .env not present — values expected from environment */ }
 
-// ── Notification recipients (actual phone numbers only, no LIDs) ─────────────
-const NOTIFY_NUMBERS = [
-    "923111794794",
-    "9232421318958",
-];
+// ── Whitelist ─────────────────────────────────────────────────────────────────
+// Read from WHITELIST env var (comma-separated) or fall back to hardcoded list.
+const WHITELIST = process.env.WHITELIST
+    ? process.env.WHITELIST.split(',').map(n => n.trim()).filter(Boolean)
+    : [
+        "923111794794",     // ← YOUR number
+        "161942429786177",  // ← YOUR number (LID)
+        "923244198958",     // ← SECOND contact's number
+        "133977293766855",  // ← SECOND contact's number (LID)
+    ];
+
+// ── Notification recipients ───────────────────────────────────────────────────
+// Read from NOTIFY_NUMBERS env var (comma-separated) or fall back to hardcoded.
+const NOTIFY_NUMBERS = process.env.NOTIFY_NUMBERS
+    ? process.env.NOTIFY_NUMBERS.split(',').map(n => n.trim()).filter(Boolean)
+    : [
+        "923111794794",
+        "923244198958",
+    ];
 
 // ── Template path ─────────────────────────────────────────────────────────────
-const TEMPLATE_PATH = path.join(__dirname, 'Template.xlsx');
+const TEMPLATE_PATH = process.env.TEMPLATE_PATH
+    ? path.resolve(__dirname, process.env.TEMPLATE_PATH)
+    : path.join(__dirname, 'Template.xlsx');
 
 // ── Year folder (fixed name, all year files live here) ────────────────────────
 const YEAR_FOLDER = path.join(__dirname, 'Saving-Year');
@@ -66,14 +91,14 @@ function getExcelPath(year) {
 }
 
 module.exports = {
-    isSchedulerStopped,
-    stopSchedulerForNumber,
-    startSchedulerForNumber,
-    NOTIFY_NUMBERS,
     WHITELIST,
+    NOTIFY_NUMBERS,
     TEMPLATE_PATH,
     YEAR_FOLDER,
     getActiveYear,
     setActiveYear,
     getExcelPath,
+    isSchedulerStopped,
+    stopSchedulerForNumber,
+    startSchedulerForNumber,
 };

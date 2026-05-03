@@ -3,7 +3,7 @@
 const path = require('path');
 const fs = require('fs');
 const { TEMPLATE_PATH } = require('./config');
-const { getActiveYear, setActiveYear, getExcelPath } = require('./config');
+const { getActiveYear, setActiveYear, getExcelPath, isSchedulerStopped, stopSchedulerForNumber, startSchedulerForNumber } = require('./config');
 const {
     MONTHS, MONTH_DAYS, BUDGET_ROWS,
     readMonthValue, writeMonthValue,
@@ -85,6 +85,7 @@ function screenMainMenu() {
         `*🌐 5*  Export HTML Report`,
         `*📋 6*  Create New Year Template`,
         `*🔄 7*  Switch Active Year`,
+        `*${isSchedulerStopped(phone) ? '▶️' : '⏸'} 8*  ${isSchedulerStopped(phone) ? 'Resume' : 'Stop'} Scheduled Backups`,
         ``,
         LINE,
         `_Reply with a number  •  *help* for commands_`,
@@ -283,10 +284,33 @@ async function handleMessage(phone, text) {
             `*0* or *back*    →  Go back one step`,
             `*cancel*         →  Exit current session`,
             `*?N*             →  Preview section N`,
-            `*help*           →  Show this message`,
+            `*help*           →  Show this message`
+            `*stop schedule*  →  Stop auto file backups`,
+            `*start schedule* →  Resume auto file backups`,,
             LINE,
             `_Only authorised numbers can use this bot._`,
             `_All data is saved to Saving-2026.xlsx._`,
+        ].join('\n');
+    }
+
+    // ── Scheduler toggle (works from any state) ───────────────────────────────
+    if (text.toLowerCase() === 'stop schedule') {
+        stopSchedulerForNumber(phone);
+        return [
+            `⏸ *Scheduler stopped for you.*`,
+            LINE,
+            `You will no longer receive scheduled file backups.`,
+            `Send *start schedule* to resume.`,
+        ].join('\n');
+    }
+    if (text.toLowerCase() === 'start schedule') {
+        startSchedulerForNumber(phone);
+        return [
+            `▶️ *Scheduler resumed for you.*`,
+            LINE,
+            `You will receive scheduled file backups at:`,
+            `  11:15 AM  •  4:20 PM  •  8:30 PM  •  11:50 PM`,
+            `_Send *stop schedule* to pause again._`,
         ].join('\n');
     }
 
@@ -359,7 +383,30 @@ async function handleMessage(phone, text) {
                 `  *0*  ⬅ Back`,
             ].join('\n');
         }
-        return `⚠️ *Invalid choice.* Reply with *1 – 7*.`;
+        if (text === '8') {
+            if (isSchedulerStopped(phone)) {
+                startSchedulerForNumber(phone);
+                return [
+                    `▶️ *Scheduled Backups Resumed*`,
+                    LINE,
+                    `You will receive files at:`,
+                    `  11:15 AM  •  4:20 PM  •  8:30 PM  •  11:50 PM PKT`,
+                    ``,
+                    `_Send *Gofy* to return to menu._`,
+                ].join('\n');
+            } else {
+                stopSchedulerForNumber(phone);
+                return [
+                    `⏸ *Scheduled Backups Stopped*`,
+                    LINE,
+                    `You will no longer receive scheduled file backups.`,
+                    `Select option *8* again to resume.`,
+                    ``,
+                    `_Send *Gofy* to return to menu._`,
+                ].join('\n');
+            }
+        }
+        return `⚠️ *Invalid choice.* Reply with *1 – 8*.`;
     }
 
     // ── SUMMARY: TYPE ─────────────────────────────────────────────────────────

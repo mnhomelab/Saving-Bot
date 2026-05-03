@@ -232,9 +232,10 @@ async function loadMonthData(month, wb) {
     const pettyCashUsed = Object.values(sectionData['Petty Cash Used'] || {}).reduce((a, b) => a + b, 0);
     const pettyCashLeft = pettyCashAvailable - pettyCashUsed; // computed fresh
 
-    // totalPerDay: sum of ALL section values per day (mirrors Excel row 164)
+    // totalPerDay: sum of all EXPENSE sections per day (excludes INCOME — mirrors Excel row 164)
     const totalPerDay = {};
     for (const section of Object.keys(dailyData)) {
+        if (section === 'INCOME') continue; // income excluded from daily total
         for (const cat of Object.keys(dailyData[section])) {
             for (const [dayStr, val] of Object.entries(dailyData[section][cat])) {
                 const d = Number(dayStr);

@@ -205,13 +205,26 @@ async function loadMonthData(month, wb) {
     const numDays = MONTH_DAYS[month];
     const sectionData = {};
 
+    const pettyCashDailyRows = []; // [{day, cat, amount}]
+
+    // dailyData[section][cat] = { day: amount, ... }
+    const dailyData = {};
+
     for (const [key, row] of Object.entries(ROW_MAP)) {
         const [section, cat] = key.split('|');
         if (!sectionData[section]) sectionData[section] = {};
+        if (!dailyData[section]) dailyData[section] = {};
+        if (!dailyData[section][cat]) dailyData[section][cat] = {};
         let total = 0;
         for (let day = 1; day <= numDays; day++) {
             const val = getCellValue(ws.getCell(row, day + 1));
-            if (typeof val === 'number') total += val;
+            if (typeof val === 'number' && val !== 0) {
+                total += val;
+                dailyData[section][cat][day] = val;
+                if (section === 'Petty Cash Used') {
+                    pettyCashDailyRows.push({ day, cat, amount: val });
+                }
+            }
         }
         sectionData[section][cat] = total;
     }
@@ -238,7 +251,9 @@ async function loadMonthData(month, wb) {
         pettyCashAvailable, pettyCashUsed, pettyCashLeft,
         totalIncome, totalExpenses, net,
         // balanceBank & balancePettyBank computed via computeRunningBalances()
-        sectionData
+        sectionData,
+        pettyCashDailyRows,
+        dailyData
     };
 }
 
@@ -275,6 +290,7 @@ function summaryCardsHtml(d) {
             color: '#2563eb',
             rows: [
                 row('Available', N(d.pettyCashAvailable), '#2563eb'),
+                row('Used',      N(d.pettyCashUsed),      '#dc2626'),
                 row('Left',      N(d.pettyCashLeft),      col(d.pettyCashLeft)),
             ]
         },
@@ -305,18 +321,41 @@ function summaryCardsHtml(d) {
     </div>`;
 }
 
-function sectionTabsHtml(sectionData, prefix = '') {
+function sectionTabsHtml(sectionData, prefix = '', pettyCashInfo = null) {
     const sections = Object.keys(sectionData);
-    const activeSections = sections.filter(s => Object.values(sectionData[s]).some(v => v > 0));
-    if (activeSections.length === 0) return '<p class="empty">No data for this period.</p>';
+    // Exclude Petty Cash Used from normal tabs — we handle it separately with daily breakdown
+    const activeSections = sections.filter(s =>
+        s !== 'Petty Cash Used' && Object.values(sectionData[s]).some(v => v > 0)
+    );
+
+    // Build Petty Cash Used as first tab if it has data
+    const pcUsed = sectionData['Petty Cash Used'] || {};
+    const pcTotal = Object.values(pcUsed).reduce((a, b) => a + b, 0);
+    const hasPetty = pcTotal > 0;
+
+    const allTabs = hasPetty ? ['Petty Cash Used', ...activeSections] : activeSections;
+    if (allTabs.length === 0) return '<p class="empty">No data for this period.</p>';
 
     const safeid = s => prefix + s.replace(/[^a-zA-Z0-9]/g, '_');
 
-    const tabBtns = activeSections.map((s, i) =>
-        `<button class="tab-btn${i === 0 ? ' active' : ''}" onclick="showTab('${safeid(s)}',this)">${s}</button>`
+    const tabBtns = allTabs.map((s, i) =>
+        `<button class="tab-btn${i === 0 ? ' active' : ''}" onclick="showTab('${safeid(s)}',this)">${s === 'Petty Cash Used' ? '💵 Petty Cash' : s}</button>`
     ).join('');
 
-    const tabPanels = activeSections.map((s, i) => {
+    const tabPanels = allTabs.map((s, i) => {
+        // Special Petty Cash Used tab with daily breakdown
+        if (s === 'Petty Cash Used') {
+            const inner = pettyCashInfo
+                ? pettyCashTabHtml(pettyCashInfo.month, pettyCashInfo.dailyRows, pcTotal)
+                : (() => {
+                    const rows = Object.entries(pcUsed).filter(([,v])=>v>0)
+                        .map(([cat,v])=>`<tr><td>${cat}</td><td class="num">${N(v)}</td></tr>`).join('');
+                    return `<table><tbody>${rows}</tbody>
+                        <tfoot><tr><td><strong>Total</strong></td><td class="num"><strong>${N(pcTotal)}</strong></td></tr></tfoot></table>`;
+                })();
+            return `<div id="${safeid(s)}" class="tab-panel${i === 0 ? ' active' : ''}">${inner}</div>`;
+        }
+
         const cats = sectionData[s];
         const rows = Object.entries(cats)
             .filter(([, v]) => v > 0)
@@ -330,6 +369,118 @@ function sectionTabsHtml(sectionData, prefix = '') {
     }).join('');
 
     return `<div class="tab-bar">${tabBtns}</div><div class="tab-panels">${tabPanels}</div>`;
+}
+
+// ── Petty Cash Used detailed tab ──────────────────────────────────────────────
+function pettyCashTabHtml(month, pettyCashDailyRows, total) {
+    if (!pettyCashDailyRows || pettyCashDailyRows.length === 0) {
+        return '<p class="empty">No petty cash entries.</p>';
+    }
+
+    // Sort by day
+    const sorted = [...pettyCashDailyRows].sort((a, b) => a.day - b.day);
+
+    const monthIdx = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].indexOf(month) + 1;
+    const year = month === 'Jan' ? new Date().getFullYear() : new Date().getFullYear(); // use active year from context
+
+    const rows = sorted.map(r => {
+        const dayStr = String(r.day).padStart(2, '0');
+        const monStr = String(monthIdx).padStart(2, '0');
+        const dateStr = `${dayStr}/${monStr}`;
+        return `<tr><td>${dateStr}</td><td>${r.cat}</td><td class="num">${N(r.amount)}</td></tr>`;
+    }).join('');
+
+    return `
+    <table>
+        <thead><tr>
+            <th style="text-align:left;background:#7c3aed;color:white;padding:9px 13px;font-size:12px;">Date</th>
+            <th style="text-align:left;background:#7c3aed;color:white;padding:9px 13px;font-size:12px;">Category</th>
+            <th style="text-align:right;background:#7c3aed;color:white;padding:9px 13px;font-size:12px;">Amount</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr>
+            <td colspan="2"><strong>Total</strong></td>
+            <td class="num"><strong>${N(total)}</strong></td>
+        </tr></tfoot>
+    </table>`;
+}
+
+
+// ── Section Breakdown: date-columns × category-rows ──────────────────────────
+function sectionBreakdownHtml(month, dailyData, numDays) {
+    const monthIdx = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].indexOf(month) + 1;
+    const monStr = String(monthIdx).padStart(2,'0');
+
+    // Build one table per section
+    const SECTION_NAMES = Object.keys(dailyData);
+    let html = '';
+
+    for (const section of SECTION_NAMES) {
+        const cats = dailyData[section];
+
+        // Only show categories that have at least one entry
+        const activeCats = Object.keys(cats).filter(cat =>
+            Object.values(cats[cat]).some(v => v > 0)
+        );
+        if (activeCats.length === 0) continue;
+
+        // Only show days that have at least one value IN THIS SECTION
+        const sectionDays = new Set();
+        activeCats.forEach(cat => {
+            Object.keys(cats[cat]).forEach(d => sectionDays.add(Number(d)));
+        });
+        const days = [...sectionDays].sort((a, b) => a - b);
+        if (days.length === 0) continue;
+
+        // Header row: Category | date1 | date2 | ... | Total
+        const headerCols = days.map(d => {
+            const ds = String(d).padStart(2,'0');
+            return `<th>${ds}/${monStr}</th>`;
+        }).join('');
+
+        // Category rows — only cells with values shown, zeros skipped
+        const bodyRows = activeCats.map(cat => {
+            let rowTotal = 0;
+            const cells = days.map(d => {
+                const v = cats[cat][d] || 0;
+                rowTotal += v;
+                return v ? `<td class="num">${N(v)}</td>` : `<td class="num empty-cell"></td>`;
+            }).join('');
+            return `<tr><td class="cat-name">${cat}</td>${cells}<td class="num total-cell">${N(rowTotal)}</td></tr>`;
+        }).join('');
+
+        // Section total row — only non-zero day totals shown
+        const secTotals = days.map(d => {
+            const t = activeCats.reduce((sum, cat) => sum + (cats[cat][d] || 0), 0);
+            return t ? `<td class="num sec-total">${N(t)}</td>` : `<td class="num sec-total"></td>`;
+        }).join('');
+        const grandTotal = activeCats.reduce((sum, cat) =>
+            sum + Object.values(cats[cat]).reduce((a,b) => a+b, 0), 0);
+
+        const isIncome = section === 'INCOME';
+        const headerBg = isIncome ? '#166534' : section === 'Petty Cash Used' ? '#7c3aed' : '#1e3a5f';
+
+        html += `
+        <div class="breakdown-section">
+            <div class="breakdown-title" style="background:${headerBg}">${section}</div>
+            <div class="table-scroll">
+            <table class="breakdown-table">
+                <thead><tr>
+                    <th class="cat-col">Category</th>
+                    ${headerCols}
+                    <th class="total-col">Total</th>
+                </tr></thead>
+                <tbody>${bodyRows}</tbody>
+                <tfoot><tr>
+                    <td class="cat-name"><strong>Total</strong></td>
+                    ${secTotals}
+                    <td class="num total-cell"><strong>${N(grandTotal)}</strong></td>
+                </tr></tfoot>
+            </table>
+            </div>
+        </div>`;
+    }
+    return html || '<p class="empty">No data.</p>';
 }
 
 const COMMON_CSS = `
@@ -361,6 +512,23 @@ tr:last-child td { border-bottom: none; }
 .empty { text-align: center; color: #94a3b8; font-size: 13px; padding: 20px; }
 .empty-row { text-align: center; color: #94a3b8; }
 .footer { text-align: center; font-size: 11px; color: #94a3b8; padding: 16px; }
+.breakdown-section { margin-bottom: 18px; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.breakdown-title { color: white; padding: 9px 14px; font-size: 12px; font-weight: 700; }
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.breakdown-table { width: max-content; min-width: 100%; border-radius: 0; box-shadow: none; }
+.breakdown-table th { background: #f1f5f9; color: #475569; padding: 8px 10px; font-size: 11px; text-align: right; white-space: nowrap; border-bottom: 2px solid #e2e8f0; }
+.breakdown-table th.cat-col { text-align: left; min-width: 130px; position: sticky; left: 0; background: #f1f5f9; z-index: 1; }
+.breakdown-table th.total-col { background: #e2e8f0; }
+.cat-name { font-size: 12px; min-width: 130px; position: sticky; left: 0; background: white; z-index: 1; }
+.empty-cell { color: #94a3b8; font-weight: 400; }
+.total-cell { background: #f8fafc; font-weight: 700; }
+.sec-total { font-weight: 600; color: #334155; }
+.main-tabs { display: flex; gap: 8px; padding: 14px 14px 0; border-bottom: 2px solid #e2e8f0; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; background: white; margin-bottom: 14px; }
+.main-tabs::-webkit-scrollbar { display: none; }
+.main-tab-btn { flex-shrink: 0; padding: 9px 16px; font-size: 13px; font-weight: 600; border: none; background: transparent; color: #64748b; cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -2px; }
+.main-tab-btn.active { color: #1e3a5f; border-bottom-color: #1e3a5f; }
+.main-tab-panel { display: none; }
+.main-tab-panel.active { display: block; }
 `;
 
 const TAB_JS = `
@@ -391,19 +559,39 @@ async function generateMonthHtml(month) {
     const d = allData[month];
     if (!d) return '<html><body>No data found for ' + month + '</body></html>';
 
+    const activeYear = require('./config').getActiveYear() || new Date().getFullYear();
+    const numDays = MONTH_DAYS[month];
+    const mainTabJs = `
+function showMainTab(id, btn) {
+    document.querySelectorAll('.main-tab-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.main-tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    btn.classList.add('active');
+}`;
+
     return `<!DOCTYPE html><html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${month} 2026 — SavingHomeLab</title>
+<title>${month} ${activeYear} Report</title>
 <style>${COMMON_CSS}</style></head><body>
-<div class="header"><h1>💰 ${month} 2026 Report</h1>
-<p>SavingHomeLab · ${new Date().toLocaleDateString('en-PK',{day:'numeric',month:'short',year:'numeric'})}</p></div>
+<div class="header"><h1>💰 ${month} ${activeYear} Report</h1>
+<p>Gofy · ${new Date().toLocaleDateString('en-PK',{day:'numeric',month:'short',year:'numeric'})}</p></div>
 ${summaryCardsHtml(d)}
-<div class="section-wrap">
-<div class="section-title">Sections — tap to view</div>
-${sectionTabsHtml(d.sectionData)}
+<div class="main-tabs">
+  <button class="main-tab-btn active" onclick="showMainTab('mt_sections',this)">📂 Sections</button>
+  <button class="main-tab-btn" onclick="showMainTab('mt_breakdown',this)">📊 Section Breakdown</button>
 </div>
-<div class="footer">SavingHomeLab Bot · ${month} 2026</div>
-<script>${TAB_JS}</script></body></html>`;
+<div id="mt_sections" class="main-tab-panel active">
+  <div class="section-wrap">
+    ${sectionTabsHtml(d.sectionData, '', { month, dailyRows: d.pettyCashDailyRows || [] })}
+  </div>
+</div>
+<div id="mt_breakdown" class="main-tab-panel">
+  <div class="section-wrap">
+    ${sectionBreakdownHtml(month, d.dailyData || {}, numDays)}
+  </div>
+</div>
+<div class="footer">Gofy Bot · ${month} ${activeYear}</div>
+<script>${TAB_JS}${mainTabJs}</script></body></html>`;
 }
 
 // ── Year HTML ─────────────────────────────────────────────────────────────────
@@ -462,7 +650,7 @@ async function generateYearHtml() {
         </table>
         <br>
         <div class="section-title">Category Detail</div>
-        ${sectionTabsHtml(d.sectionData, m + '_')}
+        ${sectionTabsHtml(d.sectionData, m + '_', { month: m, dailyRows: d.pettyCashDailyRows || [] })}
         </div>
         <div style="height:16px"></div></div>`;
     }).join('');

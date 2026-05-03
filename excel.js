@@ -225,14 +225,12 @@ async function loadMonthData(month, wb) {
         if (sec === 'INCOME') {
             totalIncome += secTotal;
         } else if (sec === 'Petty Cash Used') {
-            // handled explicitly below to guarantee inclusion
+            // Excluded from bank expenses — shown separately in Petty Cash section
         } else {
             totalExpenses += secTotal;
         }
     }
-    // Always explicitly add petty cash used to total expenses
-    totalExpenses += pettyCashUsed;
-
+    // totalExpenses = bank expenses only (Petty Cash Used shown separately)
     const net = totalIncome - totalExpenses;
 
     return {
@@ -277,7 +275,6 @@ function summaryCardsHtml(d) {
             color: '#2563eb',
             rows: [
                 row('Available', N(d.pettyCashAvailable), '#2563eb'),
-                row('Used',      N(d.pettyCashUsed),      '#dc2626'),
                 row('Left',      N(d.pettyCashLeft),      col(d.pettyCashLeft)),
             ]
         },

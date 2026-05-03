@@ -1,1 +1,18 @@
+# Environment — contains phone numbers, never commit
 .env
+
+# WhatsApp session data
+session/
+
+# Bot persistent state
+bot_settings.json
+
+# Year Excel files (personal financial data)
+Saving-Year/
+
+# Node modules
+node_modules/
+
+# OS
+.DS_Store
+Thumbs.db

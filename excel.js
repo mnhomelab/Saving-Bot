@@ -196,7 +196,7 @@ async function loadMonthData(month, wb) {
     // Budget sheet reads
     const startingBalance    = getCellValue(budgetWs.getCell(3, 1))    || 0; // Row 3 Col 1: Year-start balance
     const pettyCashAvailable = getCellValue(budgetWs.getCell(11, col)) || 0; // Row 11: Petty Cash (set amount)
-    const pettyCashLeft      = getCellValue(budgetWs.getCell(14, col)) || 0; // Row 14: Current Balance (Petty Cash)
+    // Row 14 has stale formula cache — computed fresh after pettyCashUsed below
     // NOTE: Rows 20 & 21 have stale formula cache after bot writes, so we compute fresh below
 
     const ws = wb.getWorksheet(month);
@@ -217,6 +217,7 @@ async function loadMonthData(month, wb) {
     }
 
     const pettyCashUsed = Object.values(sectionData['Petty Cash Used'] || {}).reduce((a, b) => a + b, 0);
+    const pettyCashLeft = pettyCashAvailable - pettyCashUsed; // computed fresh
 
     let totalIncome = 0, totalExpenses = 0;
     for (const [sec, cats] of Object.entries(sectionData)) {

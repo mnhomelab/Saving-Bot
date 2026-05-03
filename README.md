@@ -207,16 +207,16 @@ Edit `config.js`:
 // Add BOTH the phone format AND the LID format for each person (see below)
 const WHITELIST = [
     "923111794794",      // Your number (phone format)
-    "161942429786177",   // Your number (LID format)
-    "923244198958",      // Family member (phone format)
-    "133977293766855",   // Family member (LID format)
+    "16143529786177",   // Your number (LID format)
+    "923221198958",      // Family member (phone format)
+    "133912393766855",   // Family member (LID format)
 ];
 
 // ── Scheduled backup recipients ───────────────────────────────────────────────
 // Phone format only — these numbers receive the Excel file 4x daily
 const NOTIFY_NUMBERS = [
     "923111794794",
-    "923244198958",
+    "92324355958",
 ];
 
 // ── Template path ─────────────────────────────────────────────────────────────

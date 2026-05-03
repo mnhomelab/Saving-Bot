@@ -284,9 +284,9 @@ async function handleMessage(phone, text) {
             `*0* or *back*    →  Go back one step`,
             `*cancel*         →  Exit current session`,
             `*?N*             →  Preview section N`,
-            `*help*           →  Show this message`
+            `*help*           →  Show this message`,
             `*stop schedule*  →  Stop auto file backups`,
-            `*start schedule* →  Resume auto file backups`,,
+            `*start schedule* →  Resume auto file backups`,
             LINE,
             `_Only authorised numbers can use this bot._`,
             `_All data is saved to Saving-2026.xlsx._`,

@@ -420,6 +420,8 @@ Budget worksheet:
 
 <img src="Images/6-Year-Summary.png" alt="Year summary with Initial Balance and Month-wise Saving" width="380"/>
 
+<img src="Images/7-Year-Wise-Summary.png" alt="Year-wise summary balance detail" width="380"/>
+
 > **Cumulative totals across all months with a month-by-month saving breakdown.**  
 >
 > The Balance section shows the **Initial Balance** so you can trace from where the year started to where it is now. Month-wise Saving shows each active month as a block:
@@ -431,14 +433,6 @@ Budget worksheet:
 
 ---
 
-### 7 · Year Summary — Balance Detail
-
-<img src="Images/7-Year-Wise-Summary.png" alt="Year-wise summary balance detail" width="380"/>
-
-> **The Balance section in the year summary provides a complete financial picture.**  
-> Initial Balance shows the year-start amount. Bank shows the cumulative running balance (starting balance + all monthly nets). Petty+B adds the current petty cash on hand to give your true total savings position.
-
----
 
 ## 🌐 HTML Reports
 

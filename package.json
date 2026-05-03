@@ -1,6 +1,6 @@
 {
-  "name": "saving_bot_free",
-  "version": "1.0.0",
+  "name": "saving-bot-v0.1",
+  "version": "0.0.1",
   "description": "",
   "main": "bot.js",
   "scripts": {

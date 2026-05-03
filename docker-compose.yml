@@ -1,8 +1,7 @@
-
 services:
-  saving-bot:
+  saving-bot-v0.1:
     image: node:20-slim
-    container_name: saving-homelab-bot
+    container_name: saving-bot-v0.1
     restart: unless-stopped
     working_dir: /app
     volumes:

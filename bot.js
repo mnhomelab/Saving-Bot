@@ -25,7 +25,7 @@ client.on('qr', (qr) => {
 // ── Ready ─────────────────────────────────────────────────────────────────────
 client.on('ready', () => {
     startScheduler(client);
-    console.log('✅ Gofy Bot is LIVE!');
+    console.log('✅ Saving-Bot-v0.1 is LIVE!');
     console.log(`🔒 Whitelist: ${WHITELIST.join(', ')}`);
     console.log('💬 Send "Gofy" to start\n');
 });
@@ -90,5 +90,5 @@ client.on('auth_failure', (msg) => console.error('❌ Auth failed:', msg));
 client.on('disconnected', (reason) => console.log('🔌 Disconnected:', reason));
 
 // ── Start ─────────────────────────────────────────────────────────────────────
-console.log('🦀 Starting Gofy WhatsApp Bot...');
+console.log('🦀 Starting Saving-Bot-v0.1...');
 client.initialize();

@@ -222,9 +222,16 @@ async function loadMonthData(month, wb) {
     let totalIncome = 0, totalExpenses = 0;
     for (const [sec, cats] of Object.entries(sectionData)) {
         const secTotal = Object.values(cats).reduce((a, b) => a + b, 0);
-        if (sec === 'INCOME') totalIncome += secTotal;
-        else totalExpenses += secTotal;
+        if (sec === 'INCOME') {
+            totalIncome += secTotal;
+        } else if (sec === 'Petty Cash Used') {
+            // handled explicitly below to guarantee inclusion
+        } else {
+            totalExpenses += secTotal;
+        }
     }
+    // Always explicitly add petty cash used to total expenses
+    totalExpenses += pettyCashUsed;
 
     const net = totalIncome - totalExpenses;
 

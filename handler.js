@@ -11,6 +11,7 @@ const {
     getMonthSummary, getSectionTotals,
     generateMonthHtml, generateYearHtml,
     getMonthReport, getYearReport,
+    getCategoryDayValues,
     createYearTemplate
 } = require('./excel');
 
@@ -141,15 +142,21 @@ async function screenSelectCategory(month, section) {
     ].join('\n');
 }
 
-function screenSelectDay(month, section, category) {
+async function screenSelectDay(month, section, category) {
     const maxDay = MONTH_DAYS[month];
+    const filled = await getCategoryDayValues(month, section, category);
+    const filledDays = Object.keys(filled).map(Number).sort((a, b) => a - b);
+    const filledLines = filledDays.length > 0
+        ? filledDays.map(d => `  📅 Day *${String(d).padStart(2,'0')}*  →  ${Number(filled[d]).toLocaleString()}`).join('\n')
+        : `  _No entries yet_`;
     return [
         `📆 *${crumb(month + ' 2026', section, category)}*`,
         LINE,
-        `Which day? Enter *1 – ${maxDay}*`,
-        ``,
+        `*Filled days:*`,
+        filledLines,
+        LINE,
+        `Enter day to add/update *(1 – ${maxDay})*:`,
         `  *0*  ⬅ Back`,
-        ``,
         `_e.g. reply *15* for the 15th_`,
     ].join('\n');
 }
@@ -248,7 +255,6 @@ function formatSummary(title, d) {
         `💵 *Petty Cash*`,
         LINE,
         `  Available     *${Nf(d.pettyCashAvailable)}*`,
-        `  Used          *${Nf(d.pettyCashUsed)}*`,
         `  Left          *${Nf(d.pettyCashLeft)}*`,
         ``,
         `⚖️ *Balance*`,
@@ -494,7 +500,7 @@ async function handleMessage(phone, text) {
         const cat = pick(cats, text);
         if (!cat) return `⚠️ *Invalid.* Reply *1 – ${cats.length}* or *0* to go back.`;
         setState(phone, 'select_day', { category: cat });
-        return screenSelectDay(data.month, data.section, cat);
+        return await screenSelectDay(data.month, data.section, cat);
     }
 
     // ── MONTHLY: SELECT DAY ───────────────────────────────────────────────────
@@ -519,7 +525,7 @@ async function handleMessage(phone, text) {
 
     // ── MONTHLY: ENTER AMOUNT ─────────────────────────────────────────────────
     if (state === 'enter_amount') {
-        if (text.toLowerCase() === 'back') { setState(phone, 'select_day'); return screenSelectDay(data.month, data.section, data.category); }
+        if (text.toLowerCase() === 'back') { setState(phone, 'select_day'); return await screenSelectDay(data.month, data.section, data.category); }
         const amount = parseFloat(text.replace(/,/g, ''));
         if (isNaN(amount)) return `⚠️ *Invalid amount.* Enter a number, or *back* to go back.`;
         setState(phone, 'confirm_entry', { amount });

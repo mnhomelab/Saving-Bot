@@ -794,6 +794,24 @@ async function createYearTemplate(year, templatePath) {
     return { ok: true, path: outputPath, year };
 }
 
+
+// ── Read all filled days for a single category ────────────────────────────────
+async function getCategoryDayValues(month, section, category) {
+    const row = ROW_MAP[`${section}|${category}`];
+    if (!row) return {};
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.readFile(getExcelPath());
+    const ws = wb.getWorksheet(month);
+    if (!ws) return {};
+    const numDays = MONTH_DAYS[month];
+    const filled = {};
+    for (let day = 1; day <= numDays; day++) {
+        const val = getCellValue(ws.getCell(row, day + 1));
+        if (typeof val === 'number' && val !== 0) filled[day] = val;
+    }
+    return filled;
+}
+
 module.exports = {
     MONTHS, MONTH_DAYS, BUDGET_ROWS,
     readMonthValue, writeMonthValue,
@@ -801,5 +819,6 @@ module.exports = {
     getMonthSummary, getSectionTotals,
     generateMonthHtml, generateYearHtml,
     getMonthReport, getYearReport,
+    getCategoryDayValues,
     createYearTemplate
 };

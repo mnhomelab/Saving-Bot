@@ -35,6 +35,21 @@ function _saveSettings(data) {
     fs.writeFileSync(SETTINGS_FILE, JSON.stringify(data, null, 2));
 }
 
+// ── Scheduler opt-out per number ─────────────────────────────────────────────
+function isSchedulerStopped(number) {
+    return (_loadSettings().schedulerStopped || []).includes(String(number));
+}
+function stopSchedulerForNumber(number) {
+    const s = _loadSettings();
+    s.schedulerStopped = [...new Set([...(s.schedulerStopped || []), String(number)])];
+    _saveSettings(s);
+}
+function startSchedulerForNumber(number) {
+    const s = _loadSettings();
+    s.schedulerStopped = (s.schedulerStopped || []).filter(n => n !== String(number));
+    _saveSettings(s);
+}
+
 function getActiveYear() {
     return _loadSettings().activeYear || null;
 }
@@ -51,6 +66,9 @@ function getExcelPath(year) {
 }
 
 module.exports = {
+    isSchedulerStopped,
+    stopSchedulerForNumber,
+    startSchedulerForNumber,
     NOTIFY_NUMBERS,
     WHITELIST,
     TEMPLATE_PATH,

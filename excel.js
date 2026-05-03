@@ -376,30 +376,22 @@ function pettyCashTabHtml(month, pettyCashDailyRows, total) {
     if (!pettyCashDailyRows || pettyCashDailyRows.length === 0) {
         return '<p class="empty">No petty cash entries.</p>';
     }
-
-    // Sort by day
-    const sorted = [...pettyCashDailyRows].sort((a, b) => a.day - b.day);
-
-    const monthIdx = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].indexOf(month) + 1;
-    const year = month === 'Jan' ? new Date().getFullYear() : new Date().getFullYear(); // use active year from context
-
-    const rows = sorted.map(r => {
-        const dayStr = String(r.day).padStart(2, '0');
-        const monStr = String(monthIdx).padStart(2, '0');
-        const dateStr = `${dayStr}/${monStr}`;
-        return `<tr><td>${dateStr}</td><td>${r.cat}</td><td class="num">${N(r.amount)}</td></tr>`;
-    }).join('');
-
+    // Aggregate by category (no date shown in Sections tab)
+    const bycat = {};
+    pettyCashDailyRows.forEach(r => { bycat[r.cat] = (bycat[r.cat] || 0) + r.amount; });
+    const rows = Object.entries(bycat)
+        .filter(([,v]) => v > 0)
+        .map(([cat, v]) => `<tr><td>${cat}</td><td class="num">${N(v)}</td></tr>`)
+        .join('');
     return `
     <table>
         <thead><tr>
-            <th style="text-align:left;background:#7c3aed;color:white;padding:9px 13px;font-size:12px;">Date</th>
             <th style="text-align:left;background:#7c3aed;color:white;padding:9px 13px;font-size:12px;">Category</th>
             <th style="text-align:right;background:#7c3aed;color:white;padding:9px 13px;font-size:12px;">Amount</th>
         </tr></thead>
         <tbody>${rows}</tbody>
         <tfoot><tr>
-            <td colspan="2"><strong>Total</strong></td>
+            <td><strong>Total</strong></td>
             <td class="num"><strong>${N(total)}</strong></td>
         </tr></tfoot>
     </table>`;
@@ -640,19 +632,33 @@ async function generateYearHtml() {
             return `<tr><td>${sec}</td><td class="num" style="color:${isInc?'#16a34a':'#334155'}">${N(total)}</td></tr>`;
         }).join('');
 
+        const numDaysM = MONTH_DAYS[m];
+        const mainTabJsM = `
+function showMainTab_${m}(id, btn) {
+    document.querySelectorAll('#month_${m} .main-tab-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('#month_${m} .main-tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    btn.classList.add('active');
+}`;
         return `<div id="month_${m}" class="month-panel${i===0?' active':''}">
         ${summaryCardsHtml(d)}
-        <div class="section-wrap">
-        <div class="section-title">Section Breakdown</div>
-        <table><thead><tr><th>Section</th><th style="text-align:right">Total</th></tr></thead>
-        <tbody>${sectionRows}</tbody>
-        <tfoot><tr><td><strong>Net</strong></td><td class="num" style="color:${col(d.net)}"><strong>${sign(d.net)}${N(d.net)}</strong></td></tr></tfoot>
-        </table>
-        <br>
-        <div class="section-title">Category Detail</div>
-        ${sectionTabsHtml(d.sectionData, m + '_', { month: m, dailyRows: d.pettyCashDailyRows || [] })}
+        <div class="main-tabs">
+          <button class="main-tab-btn active" onclick="showMainTab_${m}('mt_${m}_sections',this)">📂 Sections</button>
+          <button class="main-tab-btn" onclick="showMainTab_${m}('mt_${m}_breakdown',this)">📊 Section Breakdown</button>
         </div>
-        <div style="height:16px"></div></div>`;
+        <div id="mt_${m}_sections" class="main-tab-panel active">
+          <div class="section-wrap">
+            ${sectionTabsHtml(d.sectionData, m + '_', { month: m, dailyRows: d.pettyCashDailyRows || [] })}
+          </div>
+        </div>
+        <div id="mt_${m}_breakdown" class="main-tab-panel">
+          <div class="section-wrap">
+            ${sectionBreakdownHtml(m, d.dailyData || {}, numDaysM)}
+          </div>
+        </div>
+        <div style="height:16px"></div>
+        <script>${mainTabJsM}</script>
+        </div>`;
     }).join('');
 
     const yrSummary = summaryCardsHtml({

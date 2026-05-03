@@ -860,15 +860,21 @@ async function getYearReport() {
     let totalIncome = 0, totalExpenses = 0, totalPCAvail = 0, totalPCUsed = 0;
     let lastData = { balanceBank: startingBalance, balancePettyBank: startingBalance, pettyCashLeft: 0 };
     const monthly = {};
+    // Carry forward pettyCashAvailable — Budget row 11 may only be set for some months
+    let carryPCAvail = 0;
     for (const m of MONTHS) {
         const d = allData[m];
         if (!d) continue;
+        if (d.pettyCashAvailable > 0) carryPCAvail = d.pettyCashAvailable;
+        const pcAvail = carryPCAvail;
+        const pcLeft  = pcAvail - d.pettyCashUsed;
         totalIncome    += d.totalIncome;
         totalExpenses  += d.totalExpenses;
-        totalPCAvail   += d.pettyCashAvailable;
+        totalPCAvail   += d.pettyCashAvailable > 0 ? d.pettyCashAvailable : 0;
         totalPCUsed    += d.pettyCashUsed;
         if (d.totalIncome > 0 || d.totalExpenses > 0) lastData = d;
-        monthly[m] = { income: d.totalIncome, expenses: d.totalExpenses, net: d.net };
+        monthly[m] = { income: d.totalIncome, expenses: d.totalExpenses, net: d.net,
+                       pettyCashAvailable: pcAvail, pettyCashUsed: d.pettyCashUsed, pettyCashLeft: pcLeft };
     }
     return {
         totalIncome, totalExpenses,

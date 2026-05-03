@@ -307,6 +307,7 @@ function summaryCardsHtml(d) {
             title: '⚖️ Balance',
             color: '#1e3a5f',
             rows: [
+                ...(d.startingBalance !== undefined ? [row('Initial Balance', N(d.startingBalance), '#64748b')] : []),
                 row('Bank',        N(d.balanceBank),      '#1e3a5f'),
                 row('Petty + Bank',N(d.balancePettyBank), col(d.balancePettyBank)),
             ]
@@ -475,6 +476,124 @@ function sectionBreakdownHtml(month, dailyData, numDays) {
     return html || '<p class="empty">No data.</p>';
 }
 
+
+// ── Visual Analysis: pie charts for sections and category breakdowns ──────────
+const PIE_COLORS = [
+    '#2563eb','#16a34a','#dc2626','#9333ea','#ea580c','#0891b2',
+    '#ca8a04','#db2777','#65a30d','#7c3aed','#0f766e','#c2410c',
+    '#1d4ed8','#15803d','#b91c1c','#6d28d9'
+];
+
+function buildPieSvg(slices, idPrefix) {
+    // slices = [{label, value, pct, color}]
+    const cx = 110, cy = 110, r = 90;
+    let paths = '';
+    let angle = -Math.PI / 2; // start from top
+
+    slices.forEach((s, i) => {
+        const sweep = s.pct / 100 * 2 * Math.PI;
+        const x1 = cx + r * Math.cos(angle);
+        const y1 = cy + r * Math.sin(angle);
+        angle += sweep;
+        const x2 = cx + r * Math.cos(angle);
+        const y2 = cy + r * Math.sin(angle);
+        const large = sweep > Math.PI ? 1 : 0;
+
+        // Midpoint for percentage label
+        const midAngle = angle - sweep / 2;
+        const lx = cx + (r * 0.65) * Math.cos(midAngle);
+        const ly = cy + (r * 0.65) * Math.sin(midAngle);
+        const pctLabel = s.pct >= 4 ? s.pct.toFixed(1) + '%' : '';
+
+        paths += `<path d="M${cx},${cy} L${x1.toFixed(2)},${y1.toFixed(2)} A${r},${r} 0 ${large},1 ${x2.toFixed(2)},${y2.toFixed(2)} Z"
+            fill="${s.color}" stroke="white" stroke-width="1.5"/>`;
+        if (pctLabel) {
+            paths += `<text x="${lx.toFixed(2)}" y="${ly.toFixed(2)}" text-anchor="middle" dominant-baseline="middle"
+                fill="white" font-size="10" font-weight="700">${pctLabel}</text>`;
+        }
+    });
+
+    // Legend below pie
+    const legendItems = slices.map((s, i) => {
+        const row = Math.floor(i / 2);
+        const colx = (i % 2) * 110 + 10;
+        const coly = 230 + row * 22;
+        return `<rect x="${colx}" y="${coly}" width="12" height="12" fill="${s.color}" rx="2"/>
+<text x="${colx + 16}" y="${coly + 10}" font-size="10" fill="#334155">${s.label.length > 12 ? s.label.slice(0,11)+'…' : s.label}</text>`;
+    }).join('');
+
+    const legendRows = Math.ceil(slices.length / 2);
+    const svgH = 230 + legendRows * 22 + 8;
+
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 ${svgH}" style="width:100%;max-width:280px;display:block;margin:0 auto">
+${paths}${legendItems}
+</svg>`;
+}
+
+function sectionsPieHtml(sectionData, titlePrefix) {
+    // Expense sections only (exclude INCOME for expense pie, show INCOME separately)
+    const expenseSlices = [], incomeSlices = [];
+    let totalExp = 0, totalInc = 0;
+
+    Object.entries(sectionData).forEach(([sec, cats]) => {
+        const total = Object.values(cats).reduce((a,b) => a+b, 0);
+        if (total === 0) return;
+        if (sec === 'INCOME') { totalInc += total; incomeSlices.push({ label: sec, value: total }); }
+        else { totalExp += total; expenseSlices.push({ label: sec, value: total }); }
+    });
+
+    const buildPct = (items, total) => items
+        .map((s, i) => ({ ...s, pct: total > 0 ? (s.value / total * 100) : 0, color: PIE_COLORS[i % PIE_COLORS.length] }))
+        .sort((a, b) => b.value - a.value);
+
+    let html = '<div class="viz-wrap">';
+    html += '<div class="viz-title">📊 Visual Analysis</div>';
+
+    if (expenseSlices.length > 0) {
+        const slices = buildPct(expenseSlices, totalExp);
+        html += `<div class="viz-card">
+            <div class="viz-subtitle">💸 Expense Breakdown by Section</div>
+            ${buildPieSvg(slices, titlePrefix + '_exp')}
+        </div>`;
+    }
+    if (incomeSlices.length > 0) {
+        const slices = buildPct(incomeSlices, totalInc);
+        html += `<div class="viz-card">
+            <div class="viz-subtitle">💵 Income Breakdown by Section</div>
+            ${buildPieSvg(slices, titlePrefix + '_inc')}
+        </div>`;
+    }
+    html += '</div>';
+    return html;
+}
+
+function breakdownPieHtml(sectionData, titlePrefix) {
+    // One pie per section showing category breakdown
+    let html = '<div class="viz-wrap"><div class="viz-title">📊 Visual Analysis — Category Breakdown</div>';
+    let hasAny = false;
+
+    Object.entries(sectionData).forEach(([sec, cats], si) => {
+        const items = Object.entries(cats).filter(([,v]) => v > 0);
+        if (items.length === 0) return;
+        const total = items.reduce((s,[,v]) => s+v, 0);
+        if (total === 0) return;
+        hasAny = true;
+        const slices = items
+            .sort((a,b) => b[1]-a[1])
+            .map(([cat, val], i) => ({
+                label: cat, value: val,
+                pct: val / total * 100,
+                color: PIE_COLORS[i % PIE_COLORS.length]
+            }));
+        html += `<div class="viz-card">
+            <div class="viz-subtitle">${sec}</div>
+            ${buildPieSvg(slices, titlePrefix + '_' + si)}
+        </div>`;
+    });
+
+    html += '</div>';
+    return hasAny ? html : '';
+}
 const COMMON_CSS = `
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f1f5f9; color: #1e293b; }
@@ -504,6 +623,10 @@ tr:last-child td { border-bottom: none; }
 .empty { text-align: center; color: #94a3b8; font-size: 13px; padding: 20px; }
 .empty-row { text-align: center; color: #94a3b8; }
 .footer { text-align: center; font-size: 11px; color: #94a3b8; padding: 16px; }
+.viz-wrap { padding: 0 14px 8px; }
+.viz-title { font-size: 13px; font-weight: 700; color: #1e3a5f; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 10px; padding-top: 6px; }
+.viz-subtitle { font-size: 12px; font-weight: 600; color: #475569; margin-bottom: 6px; }
+.viz-card { background: white; border-radius: 10px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.08); margin-bottom: 12px; }
 .breakdown-section { margin-bottom: 18px; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
 .breakdown-title { color: white; padding: 9px 14px; font-size: 12px; font-weight: 700; }
 .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
@@ -576,11 +699,13 @@ ${summaryCardsHtml(d)}
   <div class="section-wrap">
     ${sectionTabsHtml(d.sectionData, '', { month, dailyRows: d.pettyCashDailyRows || [] })}
   </div>
+  ${sectionsPieHtml(d.sectionData, month)}
 </div>
 <div id="mt_breakdown" class="main-tab-panel">
   <div class="section-wrap">
     ${sectionBreakdownHtml(month, d.dailyData || {}, numDays)}
   </div>
+  ${breakdownPieHtml(d.sectionData, month)}
 </div>
 <div class="footer">Gofy Bot · ${month} ${activeYear}</div>
 <script>${TAB_JS}${mainTabJs}</script></body></html>`;
@@ -650,11 +775,13 @@ function showMainTab_${m}(id, btn) {
           <div class="section-wrap">
             ${sectionTabsHtml(d.sectionData, m + '_', { month: m, dailyRows: d.pettyCashDailyRows || [] })}
           </div>
+          ${sectionsPieHtml(d.sectionData, m)}
         </div>
         <div id="mt_${m}_breakdown" class="main-tab-panel">
           <div class="section-wrap">
             ${sectionBreakdownHtml(m, d.dailyData || {}, numDaysM)}
           </div>
+          ${breakdownPieHtml(d.sectionData, m)}
         </div>
         <div style="height:16px"></div>
         <script>${mainTabJsM}</script>
@@ -666,6 +793,7 @@ function showMainTab_${m}(id, btn) {
         totalIncome: yrIncome, totalExpenses: yrExpenses, net: yrNet,
         balanceBank:      lastData.balanceBank,
         balancePettyBank: lastData.balancePettyBank,
+        startingBalance,
     });
 
     return `<!DOCTYPE html><html lang="en"><head>
@@ -750,6 +878,7 @@ async function getYearReport() {
         pettyCashLeft: lastData.pettyCashLeft,
         balanceBank: lastData.balanceBank,
         balancePettyBank: lastData.balancePettyBank,
+        startingBalance,
         monthly
     };
 }
@@ -812,6 +941,26 @@ async function getCategoryDayValues(month, section, category) {
     return filled;
 }
 
+
+// ── Starting Balance (Budget sheet Row 3, Col 1) ──────────────────────────────
+async function readStartingBalance() {
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.readFile(getExcelPath());
+    const ws = wb.getWorksheet('Budget');
+    const cell = ws.getCell(3, 1);
+    return { value: getCellValue(cell) || 0 };
+}
+
+async function writeStartingBalance(amount) {
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.readFile(getExcelPath());
+    const ws = wb.getWorksheet('Budget');
+    const cell = ws.getCell(3, 1);
+    cell.value = amount === 0 ? null : amount;
+    await wb.xlsx.writeFile(getExcelPath());
+    return { ok: true };
+}
+
 module.exports = {
     MONTHS, MONTH_DAYS, BUDGET_ROWS,
     readMonthValue, writeMonthValue,
@@ -820,5 +969,7 @@ module.exports = {
     generateMonthHtml, generateYearHtml,
     getMonthReport, getYearReport,
     getCategoryDayValues,
+    readStartingBalance,
+    writeStartingBalance,
     createYearTemplate
 };

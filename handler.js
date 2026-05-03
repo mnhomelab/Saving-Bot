@@ -12,6 +12,8 @@ const {
     generateMonthHtml, generateYearHtml,
     getMonthReport, getYearReport,
     getCategoryDayValues,
+    readStartingBalance,
+    writeStartingBalance,
     createYearTemplate
 } = require('./excel');
 
@@ -162,9 +164,10 @@ async function screenSelectDay(month, section, category) {
 }
 
 function screenBudgetSelectField() {
-    const list = BUDGET_FIELDS.map((f, i) =>
-        `  *${i + 1}*  ${f}`
-    ).join('\n');
+    const list = [
+        ...BUDGET_FIELDS.map((f, i) => `  *${i + 1}*  ${f}`),
+        `  *${BUDGET_FIELDS.length + 1}*  Starting Balance`
+    ].join('\n');
     return [
         `🏦 *Budget Update*`,
         LINE,
@@ -259,6 +262,7 @@ function formatSummary(title, d) {
         ``,
         `⚖️ *Balance*`,
         LINE,
+        ...(d.startingBalance ? [`  Initial       *${Nf(d.startingBalance)}*`] : []),
         `  Bank          *${Nf(d.balanceBank)}*`,
         `  Petty + Bank  *${Nf(d.balancePettyBank)}*`,
         ``,
@@ -442,6 +446,7 @@ async function handleMessage(phone, text) {
         if (isBack(text)) { setState(phone, 'summary_type'); return screenSummaryType(); }
         if (text === '1') {
             const d = await getYearReport();
+            const yr = getActiveYear();
             clearSession(phone);
             const Nf = n => (n || 0).toLocaleString();
             const monthLines = MONTHS.map(m => {
@@ -451,11 +456,13 @@ async function handleMessage(phone, text) {
                 return `  ${m.padEnd(3)}  ${s}${Nf(md.net)}`;
             }).filter(Boolean).join('\n');
             const breakdown = monthLines ? ['', '📅 *Monthly Net*', LINE, monthLines].join('\n') : '';
-            return formatSummary('2026 Year Summary', {
+            const startLine = d.startingBalance ? ['', `💼 *Initial Balance:  ${Nf(d.startingBalance)}*`].join('\n') : '';
+            return formatSummary(`${yr} Year Summary`, {
                 totalIncome: d.totalIncome, totalExpenses: d.totalExpenses, net: d.net,
                 pettyCashAvailable: d.pettyCashAvailable, pettyCashUsed: d.pettyCashUsed, pettyCashLeft: d.pettyCashLeft,
                 balanceBank: d.balanceBank, balancePettyBank: d.balancePettyBank,
-            }) + breakdown;
+                startingBalance: d.startingBalance,
+            }) + startLine + breakdown;
         }
         return `⚠️ *Invalid.* Reply *1* for 2026 or *0* to go back.`;
     }
@@ -578,10 +585,63 @@ async function handleMessage(phone, text) {
     // ── BUDGET: SELECT FIELD ──────────────────────────────────────────────────
     if (state === 'budget_select_field') {
         if (isBack(text)) { setState(phone, 'main_menu'); return screenMainMenu(phone); }
+        // "Starting Balance" is a special option beyond BUDGET_FIELDS
+        if (parseInt(text) === BUDGET_FIELDS.length + 1) {
+            const cur = await readStartingBalance();
+            setState(phone, 'budget_starting_balance');
+            return [
+                `🏦 *Budget › Starting Balance*`,
+                LINE,
+                `Current value: *${fmtNum(cur.value)}*`,
+                ``,
+                `Enter the new starting balance:`,
+                `_Numbers only  •  *back* to go back_`,
+            ].join('\n');
+        }
         const field = pick(BUDGET_FIELDS, text);
-        if (!field) return `⚠️ *Invalid.* Reply *1* or *2*, or *0* to go back.`;
+        if (!field) return `⚠️ *Invalid.* Reply *1*–*${BUDGET_FIELDS.length + 1}*, or *0* to go back.`;
         setState(phone, 'budget_select_month', { budget_field: field });
         return screenBudgetSelectMonth(field);
+    }
+
+    // ── BUDGET: STARTING BALANCE ──────────────────────────────────────────────
+    if (state === 'budget_starting_balance') {
+        if (text.toLowerCase() === 'back') { setState(phone, 'budget_select_field'); return screenBudgetSelectField(); }
+        const amount = parseFloat(text.replace(/,/g, ''));
+        if (isNaN(amount)) return `⚠️ *Invalid amount.* Enter a number, or *back* to go back.`;
+        setState(phone, 'budget_starting_balance_confirm', { sb_amount: amount });
+        return [
+            `📋 *Confirm Starting Balance*`,
+            DLINE,
+            `💰  Amount      *${fmtNum(amount)}*`,
+            DLINE,
+            `*1*  ✅  Confirm & Save`,
+            `*2*  🔄  Change Amount`,
+            `*0*  ⬅  Back`,
+        ].join('\n');
+    }
+
+    if (state === 'budget_starting_balance_confirm') {
+        if (isBack(text) || text === '2') {
+            setState(phone, 'budget_starting_balance');
+            const cur = await readStartingBalance();
+            return [`🏦 *Starting Balance*`, LINE, `Current: *${fmtNum(cur.value)}*`, ``, `Enter new amount:`, `_*back* to go back_`].join('\n');
+        }
+        if (text === '1') {
+            const result = await writeStartingBalance(data.sb_amount);
+            clearSession(phone);
+            if (result.ok) {
+                return [
+                    `✅ *Starting Balance Updated!*`,
+                    LINE,
+                    `💰  *${fmtNum(data.sb_amount)}*`,
+                    ``,
+                    `_Send *Gofy* to continue._`,
+                ].join('\n');
+            }
+            return `❌ *Error:* ${result.error}\n_Send *Gofy* to try again._`;
+        }
+        return `⚠️ Reply *1* to save, *2* to change, *0* to go back.`;
     }
 
     // ── BUDGET: SELECT MONTH ──────────────────────────────────────────────────

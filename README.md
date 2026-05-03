@@ -24,8 +24,9 @@ Track income, expenses, petty cash and savings directly from WhatsApp, backed by
 - [Folder Structure](#-folder-structure)
 - [Installation](#-installation)
 - [Configuration](#-configuration)
-- [Creating Your Year File](#-creating-your-year-excel-file)
-- [Bot Commands](#-bot-commands)
+- [Adding WhatsApp Numbers to Whitelist](#-adding-whatsapp-numbers-to-whitelist)
+- [Creating Your Year Excel File](#-creating-your-year-excel-file)
+- [Bot Keywords](#-bot-keywords)
 - [WhatsApp Conversation Flow](#-whatsapp-conversation-flow)
 - [HTML Reports](#-html-reports)
 - [Scheduled Backups](#-scheduled-backups)
@@ -70,6 +71,7 @@ Your Phone ──WhatsApp──► Bot Number ──► Your Homelab ──► S
 - **⏰ Scheduled Backups** — Auto-send Excel at 11:15 AM, 4:20 PM, 8:30 PM, 11:50 PM PKT
 - **⏸ Backup Toggle** — Each user can stop/resume their own scheduled backups
 - **🔒 Whitelist Only** — Completely silent to all non-authorised numbers
+- **🔑 Dual Keywords** — `Sbot` (public) and a hidden keyword both open the menu
 
 ---
 
@@ -140,10 +142,9 @@ Saving-Bot-v0.1/
 
 ## 🚀 Installation
 
-### Step 1 — Clone / Copy files
+### Step 1 — Copy files
 
 ```bash
-# Copy bot files to your homelab
 mkdir ~/Saving-Bot-v0.1
 cd ~/Saving-Bot-v0.1
 # Place all bot files here
@@ -183,36 +184,137 @@ After scanning:
 🔐 Authenticated successfully
 ⏰ Scheduled: 11:15 AM PKT
 ✅ Saving-Bot-v0.1 is LIVE!
+💬 Send "Sbot" to start
 ```
 
 ---
 
 ## ⚙ Configuration
 
-Open `config.js` and update:
+Open `config.js` and update the whitelist and notify numbers:
 
 ```js
 // Who can use the bot (no + sign, no spaces)
-// Add both phone format AND LID format if your WhatsApp uses @lid
 const WHITELIST = [
-    "923111794794",      // Your number
-    "161942429786177",   // Your number (LID — check logs for this)
+    "923111794794",      // Your number (phone format)
+    "161942429786177",   // Your number (LID format — see below)
     "923244198958",      // Family member
-    "133977293766855",   // Family member (LID)
+    "133977293766855",   // Family member (LID format)
 ];
 
-// Numbers that receive scheduled file backups
+// Numbers that receive scheduled file backups (phone format only)
 const NOTIFY_NUMBERS = [
     "923111794794",
     "923244198958",
 ];
 ```
 
-**Finding your LID:** Start the bot, send any message from your number, check the logs:
+---
+
+## 🔍 Adding WhatsApp Numbers to Whitelist
+
+Modern WhatsApp uses two ID formats for the same number:
+
+| Format | Example | When used |
+|---|---|---|
+| Phone format | `923111794794@c.us` | Standard messages |
+| LID format | `161942429786177@lid` | Linked/multi-device accounts |
+
+The bot may receive your message in either format. You need **both** in the whitelist to be safe.
+
+### Step-by-step: Finding and adding a number
+
+**Step 1 — Start the bot and have the person send any message**
+
+```bash
+docker compose logs -f saving-bot-v0.1
+```
+
+**Step 2 — Look for the resolved line in logs**
+
+When someone messages the bot, the log shows:
+
 ```
 🔍 Resolved 161942429786177@lid → 161942429786177
+📨 from=161942429786177@lid resolved=161942429786177 body="hello"
+🚫 Blocked: 161942429786177 (not in whitelist)
 ```
-The number before `@lid` is your LID — add it to `WHITELIST`.
+
+Or if they come through as phone format:
+
+```
+🔍 Resolved 923111794794@c.us → 923111794794
+📨 from=923111794794@c.us resolved=923111794794 body="hello"
+```
+
+**Step 3 — Note both the `from=` value and the `resolved=` value**
+
+| Log field | What to add to WHITELIST |
+|---|---|
+| `from=161942429786177@lid` | Add `"161942429786177"` |
+| `from=923111794794@c.us` | Add `"923111794794"` |
+| `resolved=161942429786177` | Add `"161942429786177"` (same as LID) |
+
+**Step 4 — Edit `config.js`**
+
+```js
+const WHITELIST = [
+    "923111794794",      // ← phone format (from @c.us log)
+    "161942429786177",   // ← LID format   (from @lid log)
+    // add more numbers here...
+];
+```
+
+**Step 5 — Restart the bot**
+
+```bash
+docker compose restart saving-bot-v0.1
+```
+
+**Step 6 — Verify**
+
+Have the person send `Sbot` — they should now see the main menu.
+
+### Quick reference: reading the logs
+
+```
+saving-bot-v0.1 | 🔍 Resolved 161942429786177@lid → 161942429786177
+                             ──────────────────────   ─────────────────
+                             from= value              resolved= value
+                             (add without @lid)       (add this too)
+```
+
+```
+saving-bot-v0.1 | 📨 from=923111794794@c.us resolved=923111794794 body="Sbot"
+                              ─────────────────                   ─────────────
+                              Phone format ID                      Same digits
+                              (add without @c.us)
+```
+
+### Example: Adding a new family member
+
+1. They send `Sbot` to the bot number
+2. Logs show:
+   ```
+   🔍 Resolved 188227495436364@lid → 188227495436364
+   📨 from=188227495436364@lid resolved=188227495436364 body="Sbot"
+   ```
+3. Add to `config.js`:
+   ```js
+   const WHITELIST = [
+       "923111794794",
+       "161942429786177",
+       "923244198958",
+       "133977293766855",
+       "188227495436364",   // ← new family member (LID)
+   ];
+   ```
+4. If they also appear as `@c.us`, add that too:
+   ```js
+   "923331234567",      // ← new family member (phone)
+   "188227495436364",   // ← new family member (LID)
+   ```
+5. `docker compose restart saving-bot-v0.1`
 
 ---
 
@@ -220,7 +322,7 @@ The number before `@lid` is your LID — add it to `WHITELIST`.
 
 ### Option A — Via WhatsApp Bot (Recommended)
 
-1. Send `Gofy` to the bot
+1. Send `Sbot` to the bot
 2. Select `6 — Create New Year Template`
 3. Enter the year (e.g. `2027`)
 4. Confirm → bot sends `Saving-2027.xlsx` to your WhatsApp
@@ -230,7 +332,6 @@ The number before `@lid` is your LID — add it to `WHITELIST`.
 ### Option B — Manually
 
 ```bash
-# Copy and rename Template.xlsx
 cp Template.xlsx Saving-Year/Saving-2027.xlsx
 ```
 
@@ -245,51 +346,48 @@ Then open in Excel and:
 |---|---|
 | `Section-Category` | Main daily entry sheet — all income/expense rows |
 | `Budget` | Starting balance, petty cash allocation per month |
-| Other sheets | Auto-calculated summaries (do not edit) |
+| Other sheets | Auto-calculated summaries (do not edit directly) |
 
 **Row layout in Section-Category:**
 
 ```
-Row 5–11   INCOME (Wages, Interest, Dividends, etc.)
-Row 15–22  Petty Cash Used (Food, Donation, etc.)
-Row 26–28  Savings Expense
-Row 34–46  Home Expenses
-Row 50–59  Daily Living
-Row 63–70  Children
-Row 74–79  Transportation
-Row 83–87  Health
-Row 91–94  Education
-Row 98–101 Charity/Gifts
+Row 5–11    INCOME (Wages, Interest, Dividends, etc.)
+Row 15–22   Petty Cash Used (Food, Donation, etc.)
+Row 26–28   Savings Expense
+Row 34–46   Home Expenses
+Row 50–59   Daily Living
+Row 63–70   Children
+Row 74–79   Transportation
+Row 83–87   Health
+Row 91–94   Education
+Row 98–101  Charity/Gifts
 Row 105–108 Obligations
 Row 119–129 Entertainment
 Row 140–145 Subscriptions
 Row 149–154 Vacation
 Row 158–160 Miscellaneous
-Row 164    Total Per Day (auto-calculated)
+Row 164     Total Per Day (auto-calculated, excludes Income & Petty Cash)
 ```
 
 ---
 
-## 💬 Bot Commands
+## 🔑 Bot Keywords
 
-These work from any state, anytime:
-
-| Command | Action |
-|---|---|
-| `Gofy` | Open main menu |
-| `Reset` | Reset current session |
-| `help` | Show available commands |
-| `cancel` / `exit` | End session |
-| `back` or `0` | Go one step back in any menu |
-| `stop schedule` | Stop receiving scheduled backups |
-| `start schedule` | Resume scheduled backups |
-| `?N` | Preview categories inside section N (e.g. `?4`) |
+| Keyword | Visible to users | Action |
+|---|---|---|
+| `Sbot` | ✅ Yes — shown in all prompts | Opens main menu |
+| `Gofy` | ❌ No — never shown | Opens main menu (hidden) |
+| `Reset` | ✅ Yes | Resets session |
+| `help` | ✅ Yes | Shows command list |
+| `cancel` / `exit` | ✅ Yes | Ends session |
+| `back` or `0` | ✅ Yes | Go one step back |
+| `stop schedule` | ✅ Yes | Stop your scheduled backups |
+| `start schedule` | ✅ Yes | Resume scheduled backups |
+| `?N` | ✅ Yes | Preview section N categories |
 
 ---
 
 ## 📱 WhatsApp Conversation Flow
-
-<br>
 
 ### 🔹 Opening the Bot
 
@@ -302,11 +400,11 @@ These work from any state, anytime:
 │  📱 WhatsApp                │
 ├─────────────────────────────┤
 │                             │
-│  You:  Gofy                 │
+│  You:  Sbot                 │
 │                             │
 │  ╔═══════════════════════╗  │
 │  ║ 🤖 Gofy Assistant     ║  │
-│  ║ Active Year: 2026     ║  │
+│  ║ Active Year: *2026*   ║  │
 │  ║ ═══════════════════   ║  │
 │  ║                       ║  │
 │  ║ 📅 1  Enter Expense   ║  │
@@ -317,6 +415,8 @@ These work from any state, anytime:
 │  ║ 📋 6  New Year File   ║  │
 │  ║ 🔄 7  Switch Year     ║  │
 │  ║ ⏸  8  Stop Backups    ║  │
+│  ║ ───────────────────   ║  │
+│  ║ Reply with a number   ║  │
 │  ╚═══════════════════════╝  │
 │                             │
 └─────────────────────────────┘
@@ -325,9 +425,13 @@ These work from any state, anytime:
 </td>
 <td width="55%" valign="top">
 
-**Main Menu** shows the active year at the top so you always know which file you're working in. Eight options cover every use case. Option 8 dynamically shows Stop or Resume based on your current backup preference.
+**Main Menu** shows the active year at the top so you always know which file you're working in. Eight options cover every use case.
 
-Send the number of your choice to proceed.
+Type `Sbot` to open the menu. There is also a hidden keyword that works the same way.
+
+Option 8 dynamically shows **Stop** or **Resume** based on your current backup preference — each person controls their own.
+
+Send `0` or `back` at any step to go one level up.
 
 </td>
 </tr>
@@ -348,8 +452,8 @@ Send the number of your choice to proceed.
 │  You:  1 → May → 4          │
 │                             │
 │  ╔═══════════════════════╗  │
-│  ║ 📋 May 2026 › HOME    ║  │
-│  ║    EXPENSES           ║  │
+│  ║ 📋 May 2026 ›         ║  │
+│  ║    HOME EXPENSES      ║  │
 │  ║ Monthly totals shown  ║  │
 │  ║ ───────────────────   ║  │
 │  ║  1  Mortgage/Rent  —  ║  │
@@ -363,8 +467,8 @@ Send the number of your choice to proceed.
 │  You:  2  (Electricity)     │
 │                             │
 │  ╔═══════════════════════╗  │
-│  ║ 📆 May 2026 › HOME    ║  │
-│  ║    EXPENSES ›         ║  │
+│  ║ 📆 May 2026 ›         ║  │
+│  ║    HOME EXPENSES ›    ║  │
 │  ║    Electricity        ║  │
 │  ║ ───────────────────   ║  │
 │  ║ Filled days:          ║  │
@@ -380,6 +484,8 @@ Send the number of your choice to proceed.
 <td width="55%" valign="top">
 
 **Section view** shows the monthly total for every category so you instantly see what's already been entered. Categories with no entries show `—`.
+
+**Preview categories** before selecting a section by typing `?N` (e.g. `?4` shows all HOME EXPENSES categories without navigating into it).
 
 **Day selection** shows all previously filled days with their values — you can update an existing entry or add a new one. No guessing what's already been entered.
 
@@ -432,13 +538,13 @@ The breadcrumb trail at the top (`May 2026 › HOME EXPENSES › Electricity`) k
 
 **Summary view** is divided into three clear sections matching your Excel structure:
 
-🏦 **Bank** shows your income, expenses (bank transactions only, petty cash excluded), and net.
+🏦 **Bank** shows your income, expenses (bank transactions only — petty cash excluded), and net for the month.
 
 💵 **Petty Cash** shows your allocated cash, how much has been spent from it, and how much remains in hand.
 
-⚖️ **Balance** shows your running bank balance (starting balance + cumulative net) and total savings including petty cash on hand.
+⚖️ **Balance** shows your running bank balance (starting balance + cumulative net across all previous months) and total savings including petty cash on hand.
 
-All balances are **computed fresh** from raw cell data — not from Excel's stale formula cache.
+All balances are **computed fresh** from raw cell data — not from Excel's stale formula cache, so they're always accurate.
 
 </td>
 </tr>
@@ -464,7 +570,10 @@ All balances are **computed fresh** from raw cell data — not from Excel's stal
 │  ║  Expenses  780,000    ║  │
 │  ║  Net      +420,000    ║  │
 │  ║                       ║  │
-│  ║ 💼 Initial: 1,776,341 ║  │
+│  ║ ⚖️ Balance             ║  │
+│  ║  Initial 1,776,341    ║  │
+│  ║  Bank    2,196,341    ║  │
+│  ║  Petty+B 2,218,841    ║  │
 │  ║                       ║  │
 │  ║ 📅 Month-wise Saving  ║  │
 │  ║ ─────────────────     ║  │
@@ -484,15 +593,16 @@ All balances are **computed fresh** from raw cell data — not from Excel's stal
 </td>
 <td width="55%" valign="top">
 
-**Year summary** shows cumulative totals across all months, plus a month-by-month breakdown showing:
+**Year summary** shows cumulative totals across all months.
 
+The **Balance** section includes the Initial Balance (year-start amount) so you can trace the full picture from where you started to where you are now.
+
+**Month-wise Saving** shows each active month as a block:
 - **Net** — income minus expenses for the month
-- **PC Left** — petty cash remaining after spending
-- **Total** — true savings including petty cash on hand
+- **PC Left** — petty cash remaining after spending  
+- **Total** — true monthly saving = Net + PC Left
 
-Only months with non-zero activity are shown — empty months are hidden automatically.
-
-The **Initial Balance** shows your year-start bank balance so you can see the full picture.
+Only months with non-zero activity are shown — empty months are hidden.
 
 </td>
 </tr>
@@ -502,31 +612,29 @@ The **Initial Balance** shows your year-start bank balance so you can see the fu
 
 ## 🌐 HTML Reports
 
-Send `Gofy` → `5 — HTML Report` → choose month or full year.
-
-The bot sends an `.html` file. Open it in your phone's browser for the full interactive report.
+Send `Sbot` → `5 — HTML Report` → choose month or full year. The bot sends an `.html` file — open it in your phone's browser.
 
 ### Month Report Layout
 
 ```
 ┌─────────────────────────────────────────────┐
 │  💰 May 2026 Report                          │
-│  Gofy · 4 May 2026                          │
 ├──────────────┬──────────────┬───────────────┤
 │ 💵 Petty Cash│ 🏦 Bank      │ ⚖️ Balance     │
 │ Available    │ Income       │ Bank          │
 │ Used         │ Expenses     │ Petty+Bank    │
 │ Left         │ Net          │               │
 ├─────────────────────────────────────────────┤
-│  📂 Sections  │  📊 Section Breakdown        │
+│ [📂 Sections]  [📊 Section Breakdown]        │
 ├─────────────────────────────────────────────┤
-│  [Scrollable category tabs per section]     │
+│  Scrollable category tabs per section       │
 │                                             │
 │  📊 Visual Analysis                         │
-│  ┌──────────┐  ┌──────────┐                │
-│  │ Expense  │  │ Income   │                │
-│  │  Pie     │  │  Pie     │                │
-│  └──────────┘  └──────────┘                │
+│  ┌───────────┐   ┌───────────┐             │
+│  │  Expense  │   │  Income   │             │
+│  │  Pie Chart│   │  Pie Chart│             │
+│  │  by sect. │   │  by sect. │             │
+│  └───────────┘   └───────────┘             │
 └─────────────────────────────────────────────┘
 ```
 
@@ -534,21 +642,24 @@ The bot sends an `.html` file. Open it in your phone's browser for the full inte
 
 ```
 ┌──────────────────────────────────────────────────┐
-│  📅 Total Per Day                                 │
+│  📅 Total Per Day  (expense sections only)        │
 │  Date  │ 01/05 │ 02/05 │ 15/05 │ Grand Total    │
 │  Total │ 132K  │  8.5K │  45K  │    185K        │
 ├──────────────────────────────────────────────────┤
-│  HOME EXPENSES                                   │
+│  HOME EXPENSES (only dates with data shown)      │
 │  Category       │ 01/05 │ 15/05 │ Total          │
 │  Electricity    │  —    │ 8,500 │  8,500         │
 │  Internet       │ 3,200 │  —    │  3,200         │
 │  Total          │ 3,200 │ 8,500 │ 11,700         │
+├──────────────────────────────────────────────────┤
+│  📊 Visual Analysis — Category Breakdown         │
+│  One pie chart per section showing % per cat.    │
 └──────────────────────────────────────────────────┘
 ```
 
 ### Year Report
 
-The year report has **month tabs** (Jan → Dec). Each month tab has the same two-tab layout (Sections + Section Breakdown), plus year-level totals at the top.
+The year report has **month tabs** (Jan → Dec). Each month tab has the same two-tab layout (Sections + Section Breakdown + Visual Analysis), plus year-level totals and Initial Balance at the top.
 
 ---
 
@@ -563,10 +674,10 @@ The bot automatically sends all `.xlsx` files in `Saving-Year/` to `NOTIFY_NUMBE
 | 8:30 PM | `30 20 * * *` |
 | 11:50 PM | `50 23 * * *` |
 
-**To stop your backups:** Send `stop schedule` or use **Option 8** in the main menu.  
+**To stop your backups:** Send `stop schedule` or select **Option 8** in the main menu.  
 **To resume:** Send `start schedule` or select **Option 8** again.
 
-Each family member controls their own backup preference independently.
+Each family member controls their own backup preference independently — stopping for one does not affect others.
 
 ---
 
@@ -575,38 +686,45 @@ Each family member controls their own backup preference independently.
 | Problem | Fix |
 |---|---|
 | QR code expired | `docker compose restart saving-bot-v0.1` |
-| Bot not responding | Check your number + LID are both in `WHITELIST` |
+| Bot not responding to `Sbot` | Check both phone format AND LID are in `WHITELIST` — see [Adding Numbers](#-adding-whatsapp-numbers-to-whitelist) |
 | Chromium lock error | `rm -f session/session/SingletonLock && docker compose restart saving-bot-v0.1` |
-| Session lost | `rm -rf session/ && docker compose restart saving-bot-v0.1` (rescan QR) |
-| Wrong values in report | Values computed fresh from cells — check entries in Excel directly |
-| Excel styling lost | Uses ExcelJS which fully preserves all cell styles and formatting |
-| `node-cron` not found | `docker compose down && docker compose up -d` (full reinstall) |
-| `@lid` blocked messages | Normal — WhatsApp internal sync messages, safely ignored |
+| Session lost after restart | `rm -rf session/ && docker compose restart saving-bot-v0.1` (rescan QR) |
+| `[object Object]` in report | Formula cell with no cached result — bot now computes these fresh automatically |
+| Petty Cash Left shows 0 | Check `pettyCashAvailable` is set in Budget sheet row 11 for at least one month |
+| Excel styling lost | Uses ExcelJS which fully preserves all cell styles on write |
+| `node-cron not found` | `docker compose down && docker compose up -d` (triggers full npm reinstall) |
+| `@lid` blocked messages on startup | Normal — WhatsApp internal sync messages, safely ignored |
+| Wrong balance in report | Running balance computed from raw entries — check Budget sheet row 3 (Starting Balance) |
 
-### Useful commands
+### Useful Commands
 
 ```bash
 # View live logs
 docker compose logs -f saving-bot-v0.1
 
-# Restart bot
+# Restart bot (keeps session)
 docker compose restart saving-bot-v0.1
 
 # Stop everything
 docker compose down
 
-# Rebuild from scratch
-docker compose down && docker compose up -d --build
+# Full rebuild (reinstalls npm packages)
+docker compose down && docker compose up -d
 
 # Check running containers
 docker compose ps
+
+# Remove stale Chromium lock (if bot won't start)
+rm -f session/session/SingletonLock
+rm -f session/session/SingletonCookie
+docker compose restart saving-bot-v0.1
 ```
 
 ---
 
 ## 🔒 Security
 
-- Only `WHITELIST` numbers receive any response — all others are completely ignored (no reply, no log)
+- Only `WHITELIST` numbers receive any response — all others are completely silent (no reply, no log)
 - Session data stored locally in `./session/` — never uploaded anywhere
 - Excel file stays on your homelab — never sent to any external service
 - No inbound ports required — bot connects outbound only

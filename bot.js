@@ -3,6 +3,7 @@
 const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const { handleMessage } = require('./handler');
+const { startScheduler } = require('./scheduler');
 const { WHITELIST } = require('./config');
 
 const client = new Client({
@@ -23,6 +24,7 @@ client.on('qr', (qr) => {
 
 // ── Ready ─────────────────────────────────────────────────────────────────────
 client.on('ready', () => {
+    startScheduler(client);
     console.log('✅ Gofy Bot is LIVE!');
     console.log(`🔒 Whitelist: ${WHITELIST.join(', ')}`);
     console.log('💬 Send "Gofy" to start\n');
@@ -47,16 +49,15 @@ async function processMessage(msg) {
     const from = msg.from || '';
     const body = (msg.body || '').trim();
 
+    // Skip groups and empty messages silently
     if (from.endsWith('@g.us')) return;
     if (!body) return;
 
     const number = await getRealNumber(msg);
-    console.log(`📨 from=${from} resolved=${number} body="${body}"`);
 
-    if (!WHITELIST.includes(number)) {
-        console.log(`🚫 Blocked: ${number} (raw: ${from})`);
-        return;
-    }
+    // Non-whitelisted: complete silence — no reply, no log
+    // Bot appears as a normal inactive number to them
+    if (!WHITELIST.includes(number)) return;
 
     console.log(`📩 [${number}] ${body}`);
 

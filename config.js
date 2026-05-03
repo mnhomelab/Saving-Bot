@@ -11,6 +11,12 @@ const WHITELIST = [
     "133977293766855"   // ← SECOND contact's number (LID)
 ];
 
+// ── Notification recipients (actual phone numbers only, no LIDs) ─────────────
+const NOTIFY_NUMBERS = [
+    "923111794794",
+    "923244198958",
+];
+
 // ── Template path ─────────────────────────────────────────────────────────────
 const TEMPLATE_PATH = path.join(__dirname, 'Template.xlsx');
 
@@ -45,6 +51,7 @@ function getExcelPath(year) {
 }
 
 module.exports = {
+    NOTIFY_NUMBERS,
     WHITELIST,
     TEMPLATE_PATH,
     YEAR_FOLDER,

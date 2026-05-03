@@ -232,6 +232,17 @@ async function loadMonthData(month, wb) {
     const pettyCashUsed = Object.values(sectionData['Petty Cash Used'] || {}).reduce((a, b) => a + b, 0);
     const pettyCashLeft = pettyCashAvailable - pettyCashUsed; // computed fresh
 
+    // totalPerDay: sum of ALL section values per day (mirrors Excel row 164)
+    const totalPerDay = {};
+    for (const section of Object.keys(dailyData)) {
+        for (const cat of Object.keys(dailyData[section])) {
+            for (const [dayStr, val] of Object.entries(dailyData[section][cat])) {
+                const d = Number(dayStr);
+                totalPerDay[d] = (totalPerDay[d] || 0) + val;
+            }
+        }
+    }
+
     let totalIncome = 0, totalExpenses = 0;
     for (const [sec, cats] of Object.entries(sectionData)) {
         const secTotal = Object.values(cats).reduce((a, b) => a + b, 0);
@@ -253,7 +264,8 @@ async function loadMonthData(month, wb) {
         // balanceBank & balancePettyBank computed via computeRunningBalances()
         sectionData,
         pettyCashDailyRows,
-        dailyData
+        dailyData,
+        totalPerDay
     };
 }
 
@@ -398,6 +410,44 @@ function pettyCashTabHtml(month, pettyCashDailyRows, total) {
     </table>`;
 }
 
+
+
+// ── Total Per Day summary table (mirrors Excel row 164) ──────────────────────
+function totalPerDayHtml(month, totalPerDay) {
+    const days = Object.keys(totalPerDay).map(Number).sort((a, b) => a - b);
+    if (days.length === 0) return '';
+    const monthIdx = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].indexOf(month) + 1;
+    const monStr = String(monthIdx).padStart(2,'0');
+    const grandTotal = days.reduce((s, d) => s + (totalPerDay[d] || 0), 0);
+
+    const headerCols = days.map(d => {
+        const ds = String(d).padStart(2,'0');
+        return `<th>${ds}/${monStr}</th>`;
+    }).join('');
+
+    const valueCols = days.map(d =>
+        `<td class="num tpd-val">${N(totalPerDay[d] || 0)}</td>`
+    ).join('');
+
+    return `
+    <div class="breakdown-section">
+        <div class="breakdown-title" style="background:#0f766e">📅 Total Per Day</div>
+        <div class="table-scroll">
+        <table class="breakdown-table">
+            <thead><tr>
+                <th class="cat-col">Date</th>
+                ${headerCols}
+                <th class="total-col">Grand Total</th>
+            </tr></thead>
+            <tbody><tr>
+                <td class="cat-name"><strong>Total</strong></td>
+                ${valueCols}
+                <td class="num total-cell"><strong>${N(grandTotal)}</strong></td>
+            </tr></tbody>
+        </table>
+        </div>
+    </div>`;
+}
 
 // ── Section Breakdown: date-columns × category-rows ──────────────────────────
 function sectionBreakdownHtml(month, dailyData, numDays) {
@@ -638,6 +688,7 @@ tr:last-child td { border-bottom: none; }
 .empty-cell { color: #94a3b8; font-weight: 400; }
 .total-cell { background: #f8fafc; font-weight: 700; }
 .sec-total { font-weight: 600; color: #334155; }
+.tpd-val { font-weight: 600; color: #0f766e; }
 .main-tabs { display: flex; gap: 8px; padding: 14px 14px 0; border-bottom: 2px solid #e2e8f0; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; background: white; margin-bottom: 14px; }
 .main-tabs::-webkit-scrollbar { display: none; }
 .main-tab-btn { flex-shrink: 0; padding: 9px 16px; font-size: 13px; font-weight: 600; border: none; background: transparent; color: #64748b; cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -2px; }
@@ -703,6 +754,7 @@ ${summaryCardsHtml(d)}
 </div>
 <div id="mt_breakdown" class="main-tab-panel">
   <div class="section-wrap">
+    ${totalPerDayHtml(month, d.totalPerDay || {})}
     ${sectionBreakdownHtml(month, d.dailyData || {}, numDays)}
   </div>
   ${breakdownPieHtml(d.sectionData, month)}
@@ -779,6 +831,7 @@ function showMainTab_${m}(id, btn) {
         </div>
         <div id="mt_${m}_breakdown" class="main-tab-panel">
           <div class="section-wrap">
+            ${totalPerDayHtml(m, d.totalPerDay || {})}
             ${sectionBreakdownHtml(m, d.dailyData || {}, numDaysM)}
           </div>
           ${breakdownPieHtml(d.sectionData, m)}

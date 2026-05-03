@@ -1,0 +1,54 @@
+'use strict';
+
+const fs   = require('fs');
+const path = require('path');
+
+// ── Whitelist ─────────────────────────────────────────────────────────────────
+const WHITELIST = [
+    "923111794794",     // ← YOUR number
+    "161942429786177",  // ← YOUR number (LID)
+    "923244198958",     // ← SECOND contact's number
+    "133977293766855"   // ← SECOND contact's number (LID)
+];
+
+// ── Template path ─────────────────────────────────────────────────────────────
+const TEMPLATE_PATH = path.join(__dirname, 'Template.xlsx');
+
+// ── Year folder (fixed name, all year files live here) ────────────────────────
+const YEAR_FOLDER = path.join(__dirname, 'Saving-Year');
+if (!fs.existsSync(YEAR_FOLDER)) fs.mkdirSync(YEAR_FOLDER, { recursive: true });
+
+// ── Persistent settings (bot_settings.json in root folder) ───────────────────
+const SETTINGS_FILE = path.join(__dirname, 'bot_settings.json');
+
+function _loadSettings() {
+    try { return JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8')); }
+    catch { return {}; }
+}
+function _saveSettings(data) {
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(data, null, 2));
+}
+
+function getActiveYear() {
+    return _loadSettings().activeYear || null;
+}
+function setActiveYear(year) {
+    const s = _loadSettings();
+    s.activeYear = year;
+    _saveSettings(s);
+}
+
+// Returns ./Saving-Year/Saving-2026.xlsx
+function getExcelPath(year) {
+    const yr = year || getActiveYear();
+    return path.join(YEAR_FOLDER, `Saving-${yr}.xlsx`);
+}
+
+module.exports = {
+    WHITELIST,
+    TEMPLATE_PATH,
+    YEAR_FOLDER,
+    getActiveYear,
+    setActiveYear,
+    getExcelPath,
+};

@@ -71,7 +71,7 @@ function crumb(...parts) { return parts.join(' › '); }
 
 // ── Screen generators ─────────────────────────────────────────────────────────
 
-function screenMainMenu() {
+function screenMainMenu(phone) {
     const yr = getActiveYear() || '—';
     return [
         `🤖 *Gofy Assistant*`,
@@ -329,7 +329,7 @@ async function handleMessage(phone, text) {
                 ].join('\n');
             }
             setState(phone, 'main_menu');
-            return screenMainMenu();
+            return screenMainMenu(phone);
         }
         return [
             `👋 *Hello!*`,
@@ -349,7 +349,7 @@ async function handleMessage(phone, text) {
             `✅ *Active year set to ${yr}*`,
             `_Reading: Saving-${yr}/Saving-${yr}.xlsx_`,
             ``,
-            screenMainMenu(),
+            screenMainMenu(phone),
         ].join('\n');
     }
 
@@ -411,7 +411,7 @@ async function handleMessage(phone, text) {
 
     // ── SUMMARY: TYPE ─────────────────────────────────────────────────────────
     if (state === 'summary_type') {
-        if (isBack(text)) { setState(phone, 'main_menu'); return screenMainMenu(); }
+        if (isBack(text)) { setState(phone, 'main_menu'); return screenMainMenu(phone); }
         if (text === '1') { setState(phone, 'summary_select_month'); return screenSummarySelectMonth(); }
         if (text === '2') {
             setState(phone, 'summary_year');
@@ -456,7 +456,7 @@ async function handleMessage(phone, text) {
 
     // ── MONTHLY: SELECT MONTH ─────────────────────────────────────────────────
     if (state === 'select_month') {
-        if (isBack(text)) { setState(phone, 'main_menu'); return screenMainMenu(); }
+        if (isBack(text)) { setState(phone, 'main_menu'); return screenMainMenu(phone); }
         const month = pick(MONTHS, text);
         if (!month) return `⚠️ *Invalid.* Reply with *1 – ${MONTHS.length}* or *0* to go back.`;
         setState(phone, 'select_section', { month });
@@ -571,7 +571,7 @@ async function handleMessage(phone, text) {
 
     // ── BUDGET: SELECT FIELD ──────────────────────────────────────────────────
     if (state === 'budget_select_field') {
-        if (isBack(text)) { setState(phone, 'main_menu'); return screenMainMenu(); }
+        if (isBack(text)) { setState(phone, 'main_menu'); return screenMainMenu(phone); }
         const field = pick(BUDGET_FIELDS, text);
         if (!field) return `⚠️ *Invalid.* Reply *1* or *2*, or *0* to go back.`;
         setState(phone, 'budget_select_month', { budget_field: field });
@@ -648,7 +648,7 @@ async function handleMessage(phone, text) {
 
     // ── REPORT: SELECT TYPE ───────────────────────────────────────────────────
     if (state === 'report_select') {
-        if (isBack(text)) { setState(phone, 'main_menu'); return screenMainMenu(); }
+        if (isBack(text)) { setState(phone, 'main_menu'); return screenMainMenu(phone); }
         if (text === '1') {
             setState(phone, 'report_select_month');
             return screenSelectMonth('HTML Report › Select Month');
@@ -677,7 +677,7 @@ async function handleMessage(phone, text) {
 
     // ── SWITCH ACTIVE YEAR ────────────────────────────────────────────────────
     if (state === 'switch_year') {
-        if (isBack(text)) { setState(phone, 'main_menu'); return screenMainMenu(); }
+        if (isBack(text)) { setState(phone, 'main_menu'); return screenMainMenu(phone); }
         const yr = parseInt(text.trim(), 10);
         if (isNaN(yr) || yr < 2024 || yr > 2099) return `⚠️ Enter a valid year (2024–2099) or *0* to go back.`;
         const excelPath = getExcelPath(yr);
@@ -696,13 +696,13 @@ async function handleMessage(phone, text) {
             `✅ *Switched to ${yr}*`,
             `_Now reading: Saving-${yr}/Saving-${yr}.xlsx_`,
             ``,
-            screenMainMenu(),
+            screenMainMenu(phone),
         ].join('\n');
     }
 
     // ── NEW YEAR TEMPLATE: ENTER YEAR ────────────────────────────────────────
     if (state === 'new_year_enter') {
-        if (isBack(text)) { setState(phone, 'main_menu'); return screenMainMenu(); }
+        if (isBack(text)) { setState(phone, 'main_menu'); return screenMainMenu(phone); }
         const yr = parseInt(text.trim(), 10);
         if (isNaN(yr) || yr < 2024 || yr > 2099) return `⚠️ Enter a valid year (2024–2099) or *0* to go back.`;
         setState(phone, 'new_year_confirm', { new_year: yr });
@@ -747,7 +747,7 @@ async function handleMessage(phone, text) {
     return [
         `⚠️ _Session was reset._`,
         ``,
-        screenMainMenu(),
+        screenMainMenu(phone),
     ].join('\n');
 }
 

@@ -115,12 +115,15 @@ bash pre-req/install-docker.sh
 ```
 Saving-Bot-v0.1/
 ├── bot.js                  ← WhatsApp client + message routing
-├── config.js               ← Whitelist, template path, year settings
+├── config.js               ← Loads .env, exposes settings + helpers
 ├── handler.js              ← Conversation state machine
 ├── excel.js                ← Excel read/write + HTML report generation
 ├── scheduler.js            ← Scheduled backup cron jobs
 ├── package.json
 ├── docker-compose.yml
+├── .env                    ← ⚠️ YOUR config — never commit to Git
+├── .env.example            ← Safe template — commit this instead
+├── .gitignore              ← Protects .env, session/, Saving-Year/
 ├── README.md
 ├── Template.xlsx           ← Blank year template (do not modify)
 ├── Images/
@@ -164,7 +167,14 @@ cp /path/to/Saving-2026.xlsx Saving-Year/Saving-2026.xlsx
 # Template.xlsx should already be in the root folder
 ```
 
-### Step 4 — Configure whitelist (see [Configuration](#-configuration))
+### Step 4 — Create your `.env` file
+
+```bash
+cp .env.example .env
+nano .env          # fill in your phone numbers
+```
+
+See [Configuration](#-configuration) for what to put in it.
 
 ### Step 5 — Start the bot
 
@@ -199,35 +209,59 @@ Once done:
 
 ## ⚙ Configuration
 
-Edit `config.js`:
+All sensitive values live in a `.env` file — **never hardcoded, never committed to Git**.
 
-```js
-// ── Whitelist — who can use the bot ──────────────────────────────────────────
-// Format: country code + number, no + or spaces
-// Add BOTH the phone format AND the LID format for each person (see below)
-const WHITELIST = [
-    "923111794794",      // Your number (phone format)
-    "16143529786177",   // Your number (LID format)
-    "923221198958",      // Family member (phone format)
-    "133912393766855",   // Family member (LID format)
-];
+### `.env` file
 
-// ── Scheduled backup recipients ───────────────────────────────────────────────
-// Phone format only — these numbers receive the Excel file 4x daily
-const NOTIFY_NUMBERS = [
-    "923111794794",
-    "92324355958",
-];
+Copy the example and edit it:
 
-// ── Template path ─────────────────────────────────────────────────────────────
-const TEMPLATE_PATH = './Template.xlsx';
+```bash
+cp .env.example .env
+nano .env
 ```
+
+```ini
+# ── Whitelist ──────────────────────────────────────────────────────────────────
+# Comma-separated. Include BOTH phone format AND LID format for each person.
+# How to find LIDs: see "Adding WhatsApp Numbers" section below.
+WHITELIST=923111794794,161942429786177,923244198958,133977293766855
+
+# ── Scheduled backup recipients ────────────────────────────────────────────────
+# Phone format only (no LIDs). Receive the Excel file 4× daily.
+NOTIFY_NUMBERS=923111794794,923244198958
+
+# ── Template path ──────────────────────────────────────────────────────────────
+TEMPLATE_PATH=./Template.xlsx
+
+# ── Timezone ───────────────────────────────────────────────────────────────────
+# Full list: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+TZ=Asia/Karachi
+```
+
+### How `config.js` uses it
+
+`config.js` reads the `.env` file automatically on startup (no extra packages — pure Node.js). If a value is missing from `.env`, it falls back to the hardcoded defaults in the file. Docker Compose also passes the `.env` through via `env_file`.
+
+```
+.env  ──►  config.js  ──►  bot.js / handler.js / scheduler.js / excel.js
+```
+
+### What's protected by `.gitignore`
+
+```
+.env               ← your phone numbers
+session/           ← WhatsApp login session
+bot_settings.json  ← active year + per-user backup prefs
+Saving-Year/       ← your personal Excel budget files
+```
+
+> ✅ **Safe to commit:** `.env.example`, all `.js` files, `Template.xlsx`, `README.md`, `Images/`
 
 ---
 
 ## 🔍 Adding WhatsApp Numbers to Whitelist
 
-Modern WhatsApp uses two ID formats. You need **both** in the whitelist.
+Modern WhatsApp uses two ID formats for the same number. You need **both** in the whitelist.
 
 | Format | Example | When used |
 |---|---|---|
@@ -258,18 +292,16 @@ Or phone format:
 📨 from=923111794794@c.us resolved=923111794794 body="hello"
 ```
 
-**4. Add to `config.js`:**
+**4. Add both IDs to `.env`:**
 
-```
-from=161942429786177@lid  →  add "161942429786177"  (strip the @lid)
-from=923111794794@c.us    →  add "923111794794"     (strip the @c.us)
-```
+```ini
+# Before
+WHITELIST=923111794794,161942429786177
 
-```js
-const WHITELIST = [
-    "923123794794",       // phone format
-    "1619412786177",    // LID format
-];
+# After — added new member
+WHITELIST=923111794794,161942429786177,923331234567,188227495436364
+#                                      ─────────────  ────────────────
+#                                      phone format    LID format
 ```
 
 **5. Restart:**
@@ -280,19 +312,12 @@ docker compose restart saving-bot-v0.1
 
 **6. Verify** — they send `Sbot` and the main menu appears.
 
-### Adding a new family member — quick example
+### Quick reference: reading the log line
 
 ```
-Logs show:  from=188227495436364@lid  →  add "188227495436364"
-            from=923331234567@c.us    →  add "923331234567"
-```
-
-```js
-const WHITELIST = [
-    // existing entries...
-    "923331234567",      // new member (phone)
-    "188227495436364",   // new member (LID)
-];
+🔍 Resolved 161942429786177@lid → 161942429786177
+            ─────────────────────   ─────────────────
+            strip @lid suffix       add this to WHITELIST
 ```
 
 ---
@@ -433,7 +458,6 @@ Budget worksheet:
 
 ---
 
-
 ## 🌐 HTML Reports
 
 Send `Sbot` → **5 — HTML Report** → choose month or full year.  
@@ -474,7 +498,7 @@ Each family member can independently stop or resume their backups via Option 8 o
 | Problem | Fix |
 |---|---|
 | QR code expired | `docker compose restart saving-bot-v0.1` |
-| Bot not responding to `Sbot` | Add both phone format AND LID to `WHITELIST` — [see guide](#-adding-whatsapp-numbers-to-whitelist) |
+| Bot not responding to `Sbot` | Add both phone format AND LID to `WHITELIST` in `.env` — [see guide](#-adding-whatsapp-numbers-to-whitelist) |
 | Chromium lock error | `rm -f session/session/SingletonLock && docker compose restart saving-bot-v0.1` |
 | Session lost | `rm -rf session/ && docker compose restart saving-bot-v0.1` then rescan QR |
 | `[object Object]` in report | Formula cell with no cache — bot computes these fresh; check Budget sheet |
@@ -482,6 +506,7 @@ Each family member can independently stop or resume their backups via Option 8 o
 | Excel styling lost on save | ExcelJS fully preserves styles — check you're using the latest `excel.js` |
 | `node-cron not found` | `docker compose down && docker compose up -d` to trigger full npm reinstall |
 | `@lid` blocked messages on startup | Normal — WhatsApp internal sync noise, safely ignored |
+| `.env` changes not taking effect | Restart the container: `docker compose restart saving-bot-v0.1` |
 
 ### Essential Commands
 
@@ -508,8 +533,9 @@ docker compose ps
 ## 🔒 Security
 
 - Non-whitelisted numbers receive **zero response** — not even an error
+- Phone numbers stored in `.env` — excluded from Git via `.gitignore`
 - Session data stored locally in `./session/` — never leaves your machine
-- Excel file stays on your homelab — never sent to external services
+- Excel files stay in `Saving-Year/` on your homelab — excluded from Git
 - No inbound ports required
 - `bot_settings.json` stores only active year and per-user backup preferences
 

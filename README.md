@@ -267,8 +267,8 @@ from=923111794794@c.us    →  add "923111794794"     (strip the @c.us)
 
 ```js
 const WHITELIST = [
-    "923111794794",       // phone format
-    "161942429786177",    // LID format
+    "923123794794",       // phone format
+    "1619412786177",    // LID format
 ];
 ```
 

@@ -7,14 +7,14 @@ const path = require('path');
 const WHITELIST = [
     "923111794794",     // ← YOUR number
     "161942429786177",  // ← YOUR number (LID)
-    "923244198958",     // ← SECOND contact's number
-    "133977293766855"   // ← SECOND contact's number (LID)
+    "9232421318958",     // ← SECOND contact's number
+    "133971645766855"   // ← SECOND contact's number (LID)
 ];
 
 // ── Notification recipients (actual phone numbers only, no LIDs) ─────────────
 const NOTIFY_NUMBERS = [
     "923111794794",
-    "923244198958",
+    "9232421318958",
 ];
 
 // ── Template path ─────────────────────────────────────────────────────────────

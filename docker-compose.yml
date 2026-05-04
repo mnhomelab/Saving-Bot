@@ -12,11 +12,7 @@ services:
     environment:
       - PUPPETEER_SKIP_DOWNLOAD=true
     command: >
-      sh -c "rm -f /app/session/session/SingletonLock
-             /app/session/session/SingletonCookie
-             /app/session/session/SingletonSocket &&
-             apt-get update -qq && apt-get install -y -qq chromium &&
-             npm install --quiet && node bot.js"
+      sh -c "rm -f /app/session/session/SingletonLock /app/session/session/SingletonCookie /app/session/session/SingletonSocket && apt-get update -qq && apt-get install -y -qq chromium && npm install --quiet && node bot.js"
     # Chromium lock files are cleared on every start — self-heals after crashes
     # Saving-Year/ is mounted separately — files are safe even if session/ is wiped
     # All config loaded from .env file

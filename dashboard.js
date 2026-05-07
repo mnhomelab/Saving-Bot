@@ -8,12 +8,32 @@
 
 const express = require('express');
 const crypto  = require('crypto');
+const https   = require('https');
 
 const app  = express();
 const PORT = process.env.DASHBOARD_PORT || 3001;
 
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
+
+// ── Auto-detect public IP if DASHBOARD_HOST not set ──────────────────────────
+let detectedHost = process.env.DASHBOARD_HOST
+    ? process.env.DASHBOARD_HOST.replace(/\/$/, '')
+    : null;
+
+function detectPublicIp() {
+    return new Promise((resolve) => {
+        https.get('https://api.ipify.org', (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => resolve(data.trim()));
+        }).on('error', () => resolve(null));
+    });
+}
+
+function getHost() {
+    return detectedHost || `http://localhost:${PORT}`;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SHARED STATE
@@ -84,7 +104,7 @@ function generateToken(number) {
         tokenToNumber.set(token, number);
         numberToToken.set(number, token);
     }
-    const host = (process.env.DASHBOARD_HOST || `http://localhost:${PORT}`).replace(/\/$/, '');
+    const host = getHost();
     return `${host}/auth?token=${token}`;
 }
 
@@ -432,7 +452,19 @@ let server = null;
 
 function startDashboard() {
     if (server) return { ok: false, msg: 'Dashboard is already running.' };
-    server = app.listen(PORT, () => console.log(`📊 Dashboard live → port ${PORT}`));
+    server = app.listen(PORT, async () => {
+        if (!detectedHost) {
+            const ip = await detectPublicIp();
+            if (ip) {
+                detectedHost = `http://${ip}:${PORT}`;
+                console.log(`📊 Dashboard live → ${detectedHost}`);
+            } else {
+                console.log(`📊 Dashboard live → port ${PORT} (could not detect public IP)`);
+            }
+        } else {
+            console.log(`📊 Dashboard live → ${detectedHost}`);
+        }
+    });
     server.on('error', err => { console.error('Dashboard error:', err.message); server = null; });
     return { ok: true, msg: `Dashboard started on port ${PORT}` };
 }

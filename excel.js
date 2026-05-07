@@ -895,7 +895,6 @@ function showMainTab(id, btn) {
 </div>
 
 ${/* Bank balance mini card — shown prominently at the very top */''}
-${bankBalanceMiniHtml(d)}
 
 ${summaryCardsHtml(d)}
 
@@ -977,7 +976,6 @@ function showMainTab_${m}(id, btn) {
         return `
         <div id="month_${m}" class="month-panel${i===0?' active':''}">
             ${/* Bank balance mini card at the top of each month panel */''}
-            ${bankBalanceMiniHtml(d)}
             ${summaryCardsHtml(d)}
             <div class="main-tabs">
               <button class="main-tab-btn active" onclick="showMainTab_${m}('mt_${m}_sections',this)">📂 Sections</button>

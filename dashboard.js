@@ -553,7 +553,6 @@ tfoot td{background:#111827!important}
 .bb-mini-label{color:#94a3b8!important}
 .sum-row{border-bottom-color:rgba(255,255,255,.06)!important}
 .sum-label{color:#94a3b8!important}
-.sum-value{color:#e2e8f0!important}
 .sum-box-title{color:#e2e8f0!important}
 .section-title,.viz-title{color:#94d5cd!important}
 .viz-subtitle{color:#64748b!important}

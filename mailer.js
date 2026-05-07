@@ -11,7 +11,7 @@ catch { nodemailer = null; }
 const SMTP_HOST   = process.env.SMTP_HOST  || '';
 const SMTP_PORT   = parseInt(process.env.SMTP_PORT || '587', 10);
 const SMTP_USER   = process.env.SMTP_USER  || '';
-const SMTP_PASS   = process.env.SMTP_PASS  || '';
+const SMTP_PASS   = (process.env.SMTP_PASS  || '').replace(/\s+/g, ''); // strip display spaces from Gmail app passwords
 const SMTP_FROM   = process.env.SMTP_FROM  || SMTP_USER;
 const ALERT_EMAIL = (process.env.ALERT_EMAIL || '').split(',').map(e => e.trim()).filter(Boolean);
 

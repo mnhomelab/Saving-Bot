@@ -15,7 +15,14 @@ try {
             const eqIdx = trimmed.indexOf('=');
             if (eqIdx === -1) return;
             const key = trimmed.slice(0, eqIdx).trim();
-            const val = trimmed.slice(eqIdx + 1).trim();
+            let val = trimmed.slice(eqIdx + 1).trim();
+            // Strip surrounding quotes and remove spaces (handles Gmail-style app passwords)
+            if ((val.startsWith('"') && val.endsWith('"')) ||
+                (val.startsWith("'") && val.endsWith("'"))) {
+                val = val.slice(1, -1);
+            }
+            // For SMTP_PASS specifically, remove spaces (Google shows them as display separators)
+            if (key === 'SMTP_PASS') val = val.replace(/\s+/g, '');
             if (key && !(key in process.env)) process.env[key] = val;
         });
 } catch { /* .env not present — values expected from environment */ }

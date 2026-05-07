@@ -302,7 +302,7 @@ function statusPill(canUse, haveLeft) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SUMMARY CARDS HTML
-// Now shows a dedicated top-level "🏦 Bank Balance" card with both
+// Now shows a dedicated top-level "💰 Budget Balance" card with both
 //   • Balance I Can Used (Bank)  — from Budget sheet row 8
 //   • Balance I Have Left (Bank) — computed running balance (balanceBank)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -321,7 +321,7 @@ function summaryCardsHtml(d, opts = {}) {
     const bankBalanceCard = opts.hideBankBalance ? '' : `
         <div class="sum-box sum-box-featured">
             <div class="sum-box-title" style="border-color:#0f766e;color:#0f766e">
-                🏦 Bank Balance
+                💰 Budget Balance
                 ${statusPill(canUseVal, haveLeftVal)}
             </div>
             ${row('Balance I Can Used (Bank)',  N(canUseVal),   '#0f766e', true)}
@@ -401,7 +401,7 @@ function bankBalanceTableHtml(allData, year) {
 
     return `
     <div class="bb-section">
-        <div class="bb-title">🏦 Bank Balance — Monthly Overview (${year})</div>
+        <div class="bb-title">💰 Budget Balance — Monthly Overview (${year})</div>
         <div class="table-scroll">
         <table class="bb-table">
             <thead>
@@ -935,6 +935,8 @@ function showMainTab_${m}(id, btn) {
 }`;
         return `
         <div id="month_${m}" class="month-panel${i===0?' active':''}">
+            ${/* Bank balance mini card at the top of each month panel */''}
+            ${bankBalanceMiniHtml(d)}
             ${summaryCardsHtml(d)}
             <div class="main-tabs">
               <button class="main-tab-btn active" onclick="showMainTab_${m}('mt_${m}_sections',this)">📂 Sections</button>

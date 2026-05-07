@@ -61,9 +61,24 @@ async function send(subject, html) {
 
 // ── SMTP connectivity test — called on bot startup ────────────────────────────
 async function testSmtp() {
+    // Always print config diagnostic so missing vars are obvious in logs
+    const diag = [
+        ['SMTP_HOST',   cfg.host  || null,                                          'smtp.gmail.com'],
+        ['SMTP_PORT',   cfg.port  !== 587 || cfg.host ? String(cfg.port) : null,    '587'],
+        ['SMTP_USER',   cfg.user  || null,                                          'your@gmail.com'],
+        ['SMTP_PASS',   cfg.pass  ? `set (${cfg.pass.length} chars)` : null,        '16-char app password'],
+        ['ALERT_EMAIL', cfg.to.length ? cfg.to.join(', ') : null,                  'recipient@gmail.com'],
+        ['nodemailer',  nodemailer ? 'installed' : null,                            'npm install nodemailer'],
+    ];
+    console.log('📧 [SMTP] Config diagnostic:');
+    diag.forEach(([k, v, hint]) => {
+        if (v) console.log(`   ✅  ${k.padEnd(14)} = ${v}`);
+        else   console.log(`   ❌  ${k.padEnd(14)} — NOT SET  (hint: ${hint})`);
+    });
+
     if (!isConfigured()) {
-        console.log('📧 [SMTP] Not configured — skipping connectivity test.');
-        console.log('   Set SMTP_HOST, SMTP_USER, SMTP_PASS, ALERT_EMAIL in .env to enable email alerts.');
+        console.log('📧 [SMTP] Not configured — email alerts disabled.');
+        console.log('   Add the missing vars above to your .env file and restart.');
         return;
     }
     console.log(`📧 [SMTP] Testing connection to ${cfg.host}:${cfg.port}...`);

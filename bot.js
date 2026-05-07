@@ -100,7 +100,11 @@ async function processMessage(msg) {
                 console.log(`📎 [${number}] Sent file: ${reply.path}`);
                 dashboard.logActivity(number, reply.caption || `File: ${reply.path}`, 'out');
             } else {
-                await msg.reply(reply);
+                if (/https?:\/\//.test(reply)) {
+                    await client.sendMessage(msg.from, reply, { linkPreview: true });
+                } else {
+                    await msg.reply(reply);
+                }
                 console.log(`📤 [${number}] ${reply.substring(0, 80)}`);
                 dashboard.logActivity(number, reply, 'out');
             }

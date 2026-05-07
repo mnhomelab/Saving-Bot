@@ -63,7 +63,10 @@ const ROW_MAP = {
 //   Row 8  = "Balance I Can Used (Bank)"  ← manually set per month in Budget sheet
 //   Row 11 = "Petty Cash"                 ← monthly petty cash allocation
 // ─────────────────────────────────────────────────────────────────────────────
-const BUDGET_ROWS = { "Balance I Can Used (Bank)": 8, "Petty Cash": 11 };
+// Row  8 = "Balance I Can Used (Bank)"   — planned/available bank amount (per month)
+// Row 19 = "Balance I Have Left (Bank)"   — actual remaining balance from Budget sheet (cell F19 for May, etc.)
+// Row 11 = "Petty Cash"                   — monthly petty cash allocation
+const BUDGET_ROWS = { "Balance I Can Used (Bank)": 8, "Balance I Have Left (Bank)": 19, "Petty Cash": 11 };
 const BUDGET_MONTH_COL = {};
 MONTHS.forEach((m, i) => { BUDGET_MONTH_COL[m] = i + 2; });
 
@@ -186,8 +189,11 @@ async function loadMonthData(month, wb) {
     const col = BUDGET_MONTH_COL[month];
 
     const startingBalance    = getCellValue(budgetWs.getCell(3, 1))    || 0; // Year-start balance
-    // ── NEW: Read "Balance I Can Used (Bank)" — Budget row 8, per-month column ──
-    const balanceCanUse      = getCellValue(budgetWs.getCell(8, col))  || 0; // What user planned to use from bank
+    // Row 8  — "Balance I Can Used (Bank)":  planned/available bank amount per month
+    const balanceCanUse      = getCellValue(budgetWs.getCell(8, col))  || 0;
+    // Row 19 — "Balance I Have Left (Bank)": read directly from Budget sheet (e.g. F19 for May)
+    //           This is the authoritative figure — NOT computed from income/expenses.
+    const balanceHaveLeft    = getCellValue(budgetWs.getCell(19, col)) || 0;
     const pettyCashAvailable = getCellValue(budgetWs.getCell(11, col)) || 0; // Monthly petty cash allocation
 
     const ws = wb.getWorksheet(month);
@@ -241,7 +247,8 @@ async function loadMonthData(month, wb) {
 
     return {
         startingBalance,
-        balanceCanUse,          // ← NEW: Budget row 8 — "Balance I Can Used (Bank)"
+        balanceCanUse,          // Budget row 8  — "Balance I Can Used (Bank)"
+        balanceHaveLeft,        // Budget row 19 — "Balance I Have Left (Bank)" (e.g. F19 for May)
         pettyCashAvailable, pettyCashUsed, pettyCashLeft,
         totalIncome, totalExpenses, net,
         sectionData,
@@ -253,10 +260,10 @@ async function loadMonthData(month, wb) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // RUNNING BALANCES
-// balanceBank      = cumulative (startingBalance + all net to date)
-//                  → this IS "Balance I Have Left (Bank)" — the real computed figure
+// balanceBank      = cumulative (startingBalance + all net to date) — internal reference
 // balancePettyBank = balanceBank + pettyCashLeft
-// balanceHaveLeft  = balanceBank (alias, surfaced for clarity in the UI)
+// balanceHaveLeft  = read from Budget sheet row 19 in loadMonthData (e.g. F19 for May)
+//                    This is the authoritative figure — NOT overwritten here.
 // ─────────────────────────────────────────────────────────────────────────────
 function computeRunningBalances(allData, startingBalance) {
     let runningBank = startingBalance;
@@ -265,7 +272,7 @@ function computeRunningBalances(allData, startingBalance) {
         if (!d) continue;
         runningBank          = runningBank + d.net;
         d.balanceBank        = runningBank;
-        d.balanceHaveLeft    = runningBank;                        // ← NEW explicit alias
+        // d.balanceHaveLeft is already set from Budget sheet row 19 — do NOT overwrite
         d.balancePettyBank   = runningBank + d.pettyCashLeft;
     }
 }

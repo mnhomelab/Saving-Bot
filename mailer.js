@@ -12,11 +12,11 @@ catch { nodemailer = null; }
 // config.js parses .env AFTER mailer.js is first require()d, so reading
 // process.env here (top-level) would always see empty strings.
 const cfg = {
-    get host()  { return process.env.cfg.host || ''; },
-    get port()  { return parseInt(process.env.cfg.port || '587', 10); },
-    get user()  { return process.env.cfg.user || ''; },
+    get host()  { return process.env.SMTP_HOST  || ''; },
+    get port()  { return parseInt(process.env.SMTP_PORT || '587', 10); },
+    get user()  { return process.env.SMTP_USER  || ''; },
     get pass()  { return (process.env.SMTP_PASS || '').replace(/\s+/g, ''); },
-    get from()  { return process.env.cfg.from || process.env.cfg.user || ''; },
+    get from()  { return process.env.SMTP_FROM  || process.env.SMTP_USER || ''; },
     get to()    { return (process.env.ALERT_EMAIL || '').split(',').map(e => e.trim()).filter(Boolean); },
 };
 

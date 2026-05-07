@@ -416,6 +416,21 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
       <div class="fin-row fin-last"><span class="fin-label">Left</span><span class="fin-val" id="f-pcLeft">—</span></div>
     </div>
   </div>
+
+  <div class="block" style="overflow:hidden">
+    <div class="block-head">
+      <span class="block-title">📊 Year Report</span>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span id="rpt-status" style="font-size:10px;color:var(--muted)">Loading…</span>
+        <button onclick="loadReport(true)"
+          style="background:rgba(15,118,110,.15);border:1px solid rgba(15,118,110,.3);color:#94d5cd;
+          border-radius:6px;padding:3px 10px;font-size:11px;cursor:pointer;font-family:inherit">
+          ↺ Refresh
+        </button>
+      </div>
+    </div>
+    <iframe id="rpt" style="width:100%;height:85vh;border:none;display:block;border-radius:0 0 14px 14px"></iframe>
+  </div>
   <div class="block">
     <div class="block-head"><span class="block-title">💬 Live Activity Log</span><span class="block-badge" id="b-log-count">—</span></div>
     <div class="block-body" id="b-activity"><div class="empty">Waiting for messages…</div></div>
@@ -487,12 +502,38 @@ function showToast(msg){
   document.body.appendChild(t);
   requestAnimationFrame(()=>{t.style.opacity='1';setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400)},3000)});
 }
+
+// Load report into iframe via srcdoc — no navigation, no flash, instant swap
+let reportLoading = false;
+async function loadReport(manual=false) {
+  if (reportLoading) return;
+  reportLoading = true;
+  const status = document.getElementById('rpt-status');
+  if (status) status.textContent = 'Updating…';
+  try {
+    const html = await fetch('/report?t=' + Date.now()).then(r => r.text());
+    document.getElementById('rpt').srcdoc = html;
+    if (status) status.textContent = 'Live ●';
+    if (manual) showToast('📊 Report refreshed');
+  } catch(e) {
+    if (status) status.textContent = 'Error';
+  } finally {
+    reportLoading = false;
+  }
+}
+
+// Initial load
+loadReport();
+
 const es=new EventSource('/events');
 let lastDataVersion=null;
 es.onmessage=e=>{try{
   const d=JSON.parse(e.data);
   render(d);
-  if(lastDataVersion!==null&&d.dataVersion!==lastDataVersion) showToast('💰 Data updated');
+  if(lastDataVersion!==null&&d.dataVersion!==lastDataVersion){
+    loadReport();
+    showToast('💰 Data updated');
+  }
   lastDataVersion=d.dataVersion;
 }catch(_){}};
 es.onerror=()=>{document.getElementById('uptime-sub').textContent='Reconnecting…'};

@@ -7,15 +7,30 @@ const { startScheduler } = require('./scheduler');
 const { WHITELIST } = require('./config');
 const { getMonthReport } = require('./excel');
 const dashboard = require('./dashboard');
+const mailer    = require('./mailer');
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
 const client = new Client({
     authStrategy: new LocalAuth({ dataPath: './session' }),
+    // Pin WhatsApp Web version — prevents "Execution context was destroyed" on startup
+    // when WA Web updates mid-inject. Update this value if auth breaks after a WA update.
+    webVersion: '2.3000.1015505012',
+    webVersionCache: {
+        type:    'local',
+        path:    './wwebjs_cache',
+    },
     puppeteer: {
         headless: true,
         executablePath: '/usr/bin/chromium',
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--no-zygote',
+            '--single-process',
+        ]
     }
 });
 
@@ -55,6 +70,7 @@ client.on('ready', () => {
     ]);
     dashboard.startDashboard();
     refreshDashboardSummary();
+    mailer.alertBotOnline().catch(() => {});
     console.log('✅ Saving-Bot-v0.1 is LIVE!');
     console.log(`🔒 Whitelist: ${WHITELIST.join(', ')}`);
     console.log('💬 Send "Gofy" to start\n');
@@ -124,8 +140,8 @@ client.on('message', async (msg) => {
 });
 
 client.on('authenticated', () => console.log('🔐 Authenticated successfully'));
-client.on('auth_failure', (msg) => console.error('❌ Auth failed:', msg));
-client.on('disconnected', (reason) => console.log('🔌 Disconnected:', reason));
+client.on('auth_failure', (msg) => { console.error('❌ Auth failed:', msg); mailer.alertAuthFailure(msg).catch(() => {}); });
+client.on('disconnected', (reason) => { console.log('🔌 Disconnected:', reason); mailer.alertBotDown(reason).catch(() => {}); });
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 console.log('🦀 Starting Saving-Bot-v0.1...');

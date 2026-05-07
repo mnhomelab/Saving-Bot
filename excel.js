@@ -321,7 +321,7 @@ function summaryCardsHtml(d, opts = {}) {
     const bankBalanceCard = opts.hideBankBalance ? '' : `
         <div class="sum-box sum-box-featured">
             <div class="sum-box-title" style="border-color:#0f766e;color:#0f766e">
-                🏦 Bank Balance
+                💰 Budget Balance
                 ${statusPill(canUseVal, haveLeftVal)}
             </div>
             ${row('Balance I Can Used (Bank)',  N(canUseVal),   '#0f766e', true)}
@@ -852,9 +852,6 @@ function showMainTab(id, btn) {
     <h1>💰 ${month} ${activeYear} Report</h1>
     <p>Gofy · ${new Date().toLocaleDateString('en-PK',{day:'numeric',month:'short',year:'numeric'})}</p>
 </div>
-
-${/* Bank balance mini card — shown prominently at the very top */''}
-${bankBalanceMiniHtml(d)}
 
 ${summaryCardsHtml(d)}
 

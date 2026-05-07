@@ -58,6 +58,11 @@ const ROW_MAP = {
     "MISCELLANEOUS|Bank Fees":158, "MISCELLANEOUS|Postage":159, "MISCELLANEOUS|Other":160,
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// BUDGET_ROWS — Budget sheet row mapping
+//   Row 8  = "Balance I Can Used (Bank)"  ← manually set per month in Budget sheet
+//   Row 11 = "Petty Cash"                 ← monthly petty cash allocation
+// ─────────────────────────────────────────────────────────────────────────────
 const BUDGET_ROWS = { "Balance I Can Used (Bank)": 8, "Petty Cash": 11 };
 const BUDGET_MONTH_COL = {};
 MONTHS.forEach((m, i) => { BUDGET_MONTH_COL[m] = i + 2; });
@@ -66,21 +71,18 @@ MONTHS.forEach((m, i) => { BUDGET_MONTH_COL[m] = i + 2; });
 function getDayCol(month, day) {
     const max = MONTH_DAYS[month];
     if (day < 1 || day > max) return null;
-    return day + 1; // col 1=label, col 2=day1 ...
+    return day + 1;
 }
 
 function getCellValue(cell) {
     if (!cell || cell.value === null || cell.value === undefined) return null;
     const v = cell.value;
     if (typeof v === 'object' && v !== null) {
-        // Formula cell with cached result
         if ('result' in v) {
             const r = v.result;
-            // Formula returns "" when empty (e.g. IF condition) — treat as null/0
             if (r === '' || r === '-' || r === ' - ') return null;
             return r;
         }
-        // Formula cell with no cached result, or rich text object
         if ('formula' in v) return null;
         if ('richText' in v) return v.richText.map(r => r.text).join('');
         return null;
@@ -88,13 +90,12 @@ function getCellValue(cell) {
     return v;
 }
 
-// ── Public API (all async — exceljs is promise-based) ────────────────────────
+// ── Public API ────────────────────────────────────────────────────────────────
 async function readMonthValue(month, section, category, day) {
     const row = ROW_MAP[`${section}|${category}`];
     if (!row) return { error: `No mapping for ${section} / ${category}` };
     const col = getDayCol(month, day);
     if (!col) return { error: `Day ${day} invalid for ${month}` };
-
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.readFile(getExcelPath());
     const ws = wb.getWorksheet(month);
@@ -107,15 +108,11 @@ async function writeMonthValue(month, section, category, day, amount) {
     if (!row) return { error: `No mapping for ${section} / ${category}` };
     const col = getDayCol(month, day);
     if (!col) return { error: `Day ${day} invalid for ${month} (max: ${MONTH_DAYS[month]})` };
-
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.readFile(getExcelPath());
     const ws = wb.getWorksheet(month);
     const cell = ws.getCell(row, col);
-
-    // Preserve existing style, only change value
     cell.value = amount === 0 ? null : amount;
-
     await wb.xlsx.writeFile(getExcelPath());
     return { ok: true };
 }
@@ -145,36 +142,26 @@ async function getMonthSummary(month) {
     await wb.xlsx.readFile(getExcelPath());
     const ws = wb.getWorksheet(month);
     const numDays = MONTH_DAYS[month];
-
-    let income = 0;
-    let expenses = 0;
-
+    let income = 0, expenses = 0;
     for (const [key, row] of Object.entries(ROW_MAP)) {
         const section = key.split('|')[0];
         let rowSum = 0;
         for (let day = 1; day <= numDays; day++) {
-            const col = day + 1;
-            const val = getCellValue(ws.getCell(row, col));
+            const val = getCellValue(ws.getCell(row, day + 1));
             if (typeof val === 'number') rowSum += val;
         }
-        if (section === 'INCOME') {
-            income += rowSum;
-        } else {
-            expenses += rowSum;
-        }
+        if (section === 'INCOME') income += rowSum;
+        else expenses += rowSum;
     }
-
     return { income, expenses };
 }
 
-// Returns { categoryName: total } for all categories in a section for a given month
 async function getSectionTotals(month, section, categories) {
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.readFile(getExcelPath());
     const ws = wb.getWorksheet(month);
     const numDays = MONTH_DAYS[month];
     const result = {};
-
     for (const cat of categories) {
         const row = ROW_MAP[`${section}|${cat}`];
         if (!row) { result[cat] = 0; continue; }
@@ -188,26 +175,27 @@ async function getSectionTotals(month, section, categories) {
     return result;
 }
 
-// ── Core data loader (single workbook read per call) ─────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// CORE DATA LOADER
+// NEW: Now reads Budget row 8 → balanceCanUse ("Balance I Can Used (Bank)")
+//      This was previously ignored. It is now loaded every month so the HTML
+//      report can display both planned and actual bank balances.
+// ─────────────────────────────────────────────────────────────────────────────
 async function loadMonthData(month, wb) {
     const budgetWs = wb.getWorksheet('Budget');
     const col = BUDGET_MONTH_COL[month];
 
-    // Budget sheet reads
-    const startingBalance    = getCellValue(budgetWs.getCell(3, 1))    || 0; // Row 3 Col 1: Year-start balance
-    const pettyCashAvailable = getCellValue(budgetWs.getCell(11, col)) || 0; // Row 11: Petty Cash (set amount)
-    // Row 14 has stale formula cache — computed fresh after pettyCashUsed below
-    // NOTE: Rows 20 & 21 have stale formula cache after bot writes, so we compute fresh below
+    const startingBalance    = getCellValue(budgetWs.getCell(3, 1))    || 0; // Year-start balance
+    // ── NEW: Read "Balance I Can Used (Bank)" — Budget row 8, per-month column ──
+    const balanceCanUse      = getCellValue(budgetWs.getCell(8, col))  || 0; // What user planned to use from bank
+    const pettyCashAvailable = getCellValue(budgetWs.getCell(11, col)) || 0; // Monthly petty cash allocation
 
     const ws = wb.getWorksheet(month);
     if (!ws) return null;
 
     const numDays = MONTH_DAYS[month];
     const sectionData = {};
-
-    const pettyCashDailyRows = []; // [{day, cat, amount}]
-
-    // dailyData[section][cat] = { day: amount, ... }
+    const pettyCashDailyRows = [];
     const dailyData = {};
 
     for (const [key, row] of Object.entries(ROW_MAP)) {
@@ -230,12 +218,11 @@ async function loadMonthData(month, wb) {
     }
 
     const pettyCashUsed = Object.values(sectionData['Petty Cash Used'] || {}).reduce((a, b) => a + b, 0);
-    const pettyCashLeft = pettyCashAvailable - pettyCashUsed; // computed fresh
+    const pettyCashLeft = pettyCashAvailable - pettyCashUsed;
 
-    // totalPerDay: sum of all EXPENSE sections per day (excludes INCOME — mirrors Excel row 164)
     const totalPerDay = {};
     for (const section of Object.keys(dailyData)) {
-        if (section === 'INCOME') continue; // income excluded from daily total
+        if (section === 'INCOME') continue;
         for (const cat of Object.keys(dailyData[section])) {
             for (const [dayStr, val] of Object.entries(dailyData[section][cat])) {
                 const d = Number(dayStr);
@@ -247,22 +234,16 @@ async function loadMonthData(month, wb) {
     let totalIncome = 0, totalExpenses = 0;
     for (const [sec, cats] of Object.entries(sectionData)) {
         const secTotal = Object.values(cats).reduce((a, b) => a + b, 0);
-        if (sec === 'INCOME') {
-            totalIncome += secTotal;
-        } else if (sec === 'Petty Cash Used') {
-            // Excluded from bank expenses — shown separately in Petty Cash section
-        } else {
-            totalExpenses += secTotal;
-        }
+        if (sec === 'INCOME') totalIncome += secTotal;
+        else if (sec !== 'Petty Cash Used') totalExpenses += secTotal;
     }
-    // totalExpenses = bank expenses only (Petty Cash Used shown separately)
     const net = totalIncome - totalExpenses;
 
     return {
         startingBalance,
+        balanceCanUse,          // ← NEW: Budget row 8 — "Balance I Can Used (Bank)"
         pettyCashAvailable, pettyCashUsed, pettyCashLeft,
         totalIncome, totalExpenses, net,
-        // balanceBank & balancePettyBank computed via computeRunningBalances()
         sectionData,
         pettyCashDailyRows,
         dailyData,
@@ -270,32 +251,69 @@ async function loadMonthData(month, wb) {
     };
 }
 
-// ── Cumulative balance across months ─────────────────────────────────────────
-// Jan:  balanceBank = startingBalance + Jan.net
-// Feb:  balanceBank = Jan.balanceBank + Feb.net  (carries forward)
-// balancePettyBank  = balanceBank + pettyCashLeft  (per month)
+// ─────────────────────────────────────────────────────────────────────────────
+// RUNNING BALANCES
+// balanceBank      = cumulative (startingBalance + all net to date)
+//                  → this IS "Balance I Have Left (Bank)" — the real computed figure
+// balancePettyBank = balanceBank + pettyCashLeft
+// balanceHaveLeft  = balanceBank (alias, surfaced for clarity in the UI)
+// ─────────────────────────────────────────────────────────────────────────────
 function computeRunningBalances(allData, startingBalance) {
     let runningBank = startingBalance;
     for (const month of MONTHS) {
         const d = allData[month];
         if (!d) continue;
-        runningBank        = runningBank + d.net;
-        d.balanceBank      = runningBank;
-        d.balancePettyBank = runningBank + d.pettyCashLeft;
+        runningBank          = runningBank + d.net;
+        d.balanceBank        = runningBank;
+        d.balanceHaveLeft    = runningBank;                        // ← NEW explicit alias
+        d.balancePettyBank   = runningBank + d.pettyCashLeft;
     }
 }
 
-// ── Shared HTML pieces ────────────────────────────────────────────────────────
-const N = n => (n || 0).toLocaleString('en-PK');
+// ─────────────────────────────────────────────────────────────────────────────
+// SHARED HTML HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+const N    = n => (n || 0).toLocaleString('en-PK');
 const sign = n => n >= 0 ? '+' : '';
-const col = n => n >= 0 ? '#16a34a' : '#dc2626';
+const col  = n => n >= 0 ? '#16a34a' : '#dc2626';
 
+// ── Balance highlight pill ────────────────────────────────────────────────────
+function statusPill(canUse, haveLeft) {
+    if (!canUse) return '';
+    const ratio = haveLeft / canUse;
+    if (ratio >= 0.7) return `<span class="pill pill-good">Healthy</span>`;
+    if (ratio >= 0.4) return `<span class="pill pill-warn">Moderate</span>`;
+    return `<span class="pill pill-low">Low</span>`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SUMMARY CARDS HTML
+// Now shows a dedicated top-level "🏦 Bank Balance" card with both
+//   • Balance I Can Used (Bank)  — from Budget sheet row 8
+//   • Balance I Have Left (Bank) — computed running balance (balanceBank)
+// ─────────────────────────────────────────────────────────────────────────────
 function summaryCardsHtml(d) {
-    const row = (label, value, color) =>
+    const row = (label, value, color, bold) =>
         `<div class="sum-row">
             <span class="sum-label">${label}</span>
-            <span class="sum-value" style="color:${color}">${value}</span>
+            <span class="sum-value" style="color:${color};${bold?'font-size:16px;':''}">${value}</span>
          </div>`;
+
+    // ── BANK BALANCE CARD (the two key metrics — always shown first) ──────────
+    const canUseVal   = d.balanceCanUse  || 0;
+    const haveLeftVal = d.balanceHaveLeft !== undefined ? d.balanceHaveLeft : (d.balanceBank || 0);
+    const diff        = haveLeftVal - canUseVal;
+
+    const bankBalanceCard = `
+        <div class="sum-box sum-box-featured">
+            <div class="sum-box-title" style="border-color:#0f766e;color:#0f766e">
+                🏦 Bank Balance
+                ${statusPill(canUseVal, haveLeftVal)}
+            </div>
+            ${row('Balance I Can Used (Bank)',  N(canUseVal),   '#0f766e', true)}
+            ${row('Balance I Have Left (Bank)', N(haveLeftVal), col(haveLeftVal), true)}
+            ${canUseVal ? row('Difference', (diff >= 0 ? '+' : '') + N(diff), col(diff), false) : ''}
+        </div>`;
 
     const boxes = [
         {
@@ -308,26 +326,29 @@ function summaryCardsHtml(d) {
             ]
         },
         {
-            title: '🏦 Bank',
+            title: '📊 Income vs Expenses',
             color: '#16a34a',
             rows: [
-                row('Total Income',   N(d.totalIncome),              '#16a34a'),
-                row('Total Expenses', N(d.totalExpenses),            '#dc2626'),
-                row('Net',            sign(d.net) + N(d.net),        col(d.net)),
+                row('Total Income',   N(d.totalIncome),       '#16a34a'),
+                row('Total Expenses', N(d.totalExpenses),     '#dc2626'),
+                row('Net',            sign(d.net)+N(d.net),   col(d.net)),
             ]
         },
         {
-            title: '⚖️ Balance',
+            title: '⚖️ Full Balance',
             color: '#1e3a5f',
             rows: [
                 ...(d.startingBalance !== undefined ? [row('Initial Balance', N(d.startingBalance), '#64748b')] : []),
-                row('Bank',        N(d.balanceBank),      '#1e3a5f'),
-                row('Petty + Bank',N(d.balancePettyBank), col(d.balancePettyBank)),
+                row('Bank',         N(d.balanceBank),       '#1e3a5f'),
+                row('Petty + Bank', N(d.balancePettyBank),  col(d.balancePettyBank)),
             ]
         },
     ];
 
-    return `<div class="summary-boxes">${boxes.map(b => `
+    return `
+    <div class="summary-boxes">
+        ${bankBalanceCard}
+        ${boxes.map(b => `
         <div class="sum-box">
             <div class="sum-box-title" style="border-color:${b.color};color:${b.color}">${b.title}</div>
             ${b.rows.join('')}
@@ -335,49 +356,118 @@ function summaryCardsHtml(d) {
     </div>`;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// BANK BALANCE MONTHLY TABLE
+// New helper: renders a scrollable table showing Balance I Can Used vs
+// Balance I Have Left for every month, with a status column.
+// Used in the Year HTML view.
+// ─────────────────────────────────────────────────────────────────────────────
+function bankBalanceTableHtml(allData, year) {
+    const rows = MONTHS.map(m => {
+        const d = allData[m];
+        if (!d) return null;
+        if (!d.totalIncome && !d.totalExpenses && !d.balanceCanUse) return null;
+        const canUse   = d.balanceCanUse  || 0;
+        const haveLeft = d.balanceHaveLeft !== undefined ? d.balanceHaveLeft : (d.balanceBank || 0);
+        const diff     = haveLeft - canUse;
+        const pill     = statusPill(canUse, haveLeft);
+        return `
+        <tr>
+            <td class="bb-month">${m}</td>
+            <td class="bb-num bb-income">${N(d.totalIncome)}</td>
+            <td class="bb-num bb-expense">${N(d.totalExpenses)}</td>
+            <td class="bb-num bb-can">${canUse ? N(canUse) : '<span class="bb-empty">—</span>'}</td>
+            <td class="bb-num bb-left">${N(haveLeft)}</td>
+            <td class="bb-num bb-diff" style="color:${col(diff)}">${canUse ? (sign(diff)+N(diff)) : '<span class="bb-empty">—</span>'}</td>
+            <td class="bb-status">${canUse ? pill : ''}</td>
+        </tr>`;
+    }).filter(Boolean).join('');
+
+    if (!rows) return '';
+
+    return `
+    <div class="bb-section">
+        <div class="bb-title">🏦 Bank Balance — Monthly Overview (${year})</div>
+        <div class="table-scroll">
+        <table class="bb-table">
+            <thead>
+                <tr>
+                    <th class="bb-head-month">Month</th>
+                    <th class="bb-head-num">Income</th>
+                    <th class="bb-head-num">Expenses</th>
+                    <th class="bb-head-num bb-head-can">Balance I Can Used (Bank)</th>
+                    <th class="bb-head-num bb-head-left">Balance I Have Left (Bank)</th>
+                    <th class="bb-head-num">Diff</th>
+                    <th class="bb-head-status">Status</th>
+                </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+        </table>
+        </div>
+    </div>`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BANK BALANCE MINI CARD for individual month panels inside the Year view
+// ─────────────────────────────────────────────────────────────────────────────
+function bankBalanceMiniHtml(d) {
+    const canUse   = d.balanceCanUse  || 0;
+    const haveLeft = d.balanceHaveLeft !== undefined ? d.balanceHaveLeft : (d.balanceBank || 0);
+    const diff     = haveLeft - canUse;
+    return `
+    <div class="bb-mini">
+        <div class="bb-mini-row">
+            <span class="bb-mini-label">🏦 Balance I Can Used (Bank)</span>
+            <span class="bb-mini-val" style="color:#0f766e">${N(canUse)}</span>
+        </div>
+        <div class="bb-mini-row">
+            <span class="bb-mini-label">💰 Balance I Have Left (Bank)</span>
+            <span class="bb-mini-val" style="color:${col(haveLeft)}">${N(haveLeft)}</span>
+        </div>
+        ${canUse ? `<div class="bb-mini-row">
+            <span class="bb-mini-label">Difference</span>
+            <span class="bb-mini-val" style="color:${col(diff)}">${sign(diff)}${N(diff)} ${statusPill(canUse, haveLeft)}</span>
+        </div>` : ''}
+    </div>`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SECTION TABS
+// ─────────────────────────────────────────────────────────────────────────────
 function sectionTabsHtml(sectionData, prefix = '', pettyCashInfo = null) {
     const sections = Object.keys(sectionData);
-    // Exclude Petty Cash Used from normal tabs — we handle it separately with daily breakdown
     const activeSections = sections.filter(s =>
         s !== 'Petty Cash Used' && Object.values(sectionData[s]).some(v => v > 0)
     );
-
-    // Build Petty Cash Used as first tab if it has data
     const pcUsed = sectionData['Petty Cash Used'] || {};
     const pcTotal = Object.values(pcUsed).reduce((a, b) => a + b, 0);
     const hasPetty = pcTotal > 0;
-
     const allTabs = hasPetty ? ['Petty Cash Used', ...activeSections] : activeSections;
     if (allTabs.length === 0) return '<p class="empty">No data for this period.</p>';
 
     const safeid = s => prefix + s.replace(/[^a-zA-Z0-9]/g, '_');
-
     const tabBtns = allTabs.map((s, i) =>
         `<button class="tab-btn${i === 0 ? ' active' : ''}" onclick="showTab('${safeid(s)}',this)">${s === 'Petty Cash Used' ? '💵 Petty Cash' : s}</button>`
     ).join('');
 
     const tabPanels = allTabs.map((s, i) => {
-        // Special Petty Cash Used tab with daily breakdown
         if (s === 'Petty Cash Used') {
             const inner = pettyCashInfo
                 ? pettyCashTabHtml(pettyCashInfo.month, pettyCashInfo.dailyRows, pcTotal)
                 : (() => {
-                    const rows = Object.entries(pcUsed).filter(([,v])=>v>0)
+                    const r = Object.entries(pcUsed).filter(([,v])=>v>0)
                         .map(([cat,v])=>`<tr><td>${cat}</td><td class="num">${N(v)}</td></tr>`).join('');
-                    return `<table><tbody>${rows}</tbody>
+                    return `<table><tbody>${r}</tbody>
                         <tfoot><tr><td><strong>Total</strong></td><td class="num"><strong>${N(pcTotal)}</strong></td></tr></tfoot></table>`;
                 })();
             return `<div id="${safeid(s)}" class="tab-panel${i === 0 ? ' active' : ''}">${inner}</div>`;
         }
-
         const cats = sectionData[s];
-        const rows = Object.entries(cats)
-            .filter(([, v]) => v > 0)
-            .map(([cat, v]) => `<tr><td>${cat}</td><td class="num">${N(v)}</td></tr>`)
-            .join('');
-        const total = Object.values(cats).reduce((a, b) => a + b, 0);
+        const r = Object.entries(cats).filter(([,v])=>v>0)
+            .map(([cat,v]) => `<tr><td>${cat}</td><td class="num">${N(v)}</td></tr>`).join('');
+        const total = Object.values(cats).reduce((a,b) => a+b, 0);
         return `<div id="${safeid(s)}" class="tab-panel${i === 0 ? ' active' : ''}">
-            <table><tbody>${rows || '<tr><td colspan="2" class="empty-row">No entries</td></tr>'}</tbody>
+            <table><tbody>${r || '<tr><td colspan="2" class="empty-row">No entries</td></tr>'}</tbody>
             <tfoot><tr><td><strong>Total</strong></td><td class="num"><strong>${N(total)}</strong></td></tr></tfoot>
             </table></div>`;
     }).join('');
@@ -385,18 +475,13 @@ function sectionTabsHtml(sectionData, prefix = '', pettyCashInfo = null) {
     return `<div class="tab-bar">${tabBtns}</div><div class="tab-panels">${tabPanels}</div>`;
 }
 
-// ── Petty Cash Used detailed tab ──────────────────────────────────────────────
 function pettyCashTabHtml(month, pettyCashDailyRows, total) {
-    if (!pettyCashDailyRows || pettyCashDailyRows.length === 0) {
+    if (!pettyCashDailyRows || pettyCashDailyRows.length === 0)
         return '<p class="empty">No petty cash entries.</p>';
-    }
-    // Aggregate by category (no date shown in Sections tab)
     const bycat = {};
     pettyCashDailyRows.forEach(r => { bycat[r.cat] = (bycat[r.cat] || 0) + r.amount; });
-    const rows = Object.entries(bycat)
-        .filter(([,v]) => v > 0)
-        .map(([cat, v]) => `<tr><td>${cat}</td><td class="num">${N(v)}</td></tr>`)
-        .join('');
+    const rows = Object.entries(bycat).filter(([,v])=>v>0)
+        .map(([cat,v])=>`<tr><td>${cat}</td><td class="num">${N(v)}</td></tr>`).join('');
     return `
     <table>
         <thead><tr>
@@ -404,41 +489,25 @@ function pettyCashTabHtml(month, pettyCashDailyRows, total) {
             <th style="text-align:right;background:#7c3aed;color:white;padding:9px 13px;font-size:12px;">Amount</th>
         </tr></thead>
         <tbody>${rows}</tbody>
-        <tfoot><tr>
-            <td><strong>Total</strong></td>
-            <td class="num"><strong>${N(total)}</strong></td>
-        </tr></tfoot>
+        <tfoot><tr><td><strong>Total</strong></td><td class="num"><strong>${N(total)}</strong></td></tr></tfoot>
     </table>`;
 }
 
-
-
-// ── Total Per Day summary table (mirrors Excel row 164) ──────────────────────
 function totalPerDayHtml(month, totalPerDay) {
     const days = Object.keys(totalPerDay).map(Number).sort((a, b) => a - b);
     if (days.length === 0) return '';
-    const monthIdx = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].indexOf(month) + 1;
+    const monthIdx = MONTHS.indexOf(month) + 1;
     const monStr = String(monthIdx).padStart(2,'0');
     const grandTotal = days.reduce((s, d) => s + (totalPerDay[d] || 0), 0);
-
-    const headerCols = days.map(d => {
-        const ds = String(d).padStart(2,'0');
-        return `<th>${ds}/${monStr}</th>`;
-    }).join('');
-
-    const valueCols = days.map(d =>
-        `<td class="num tpd-val">${N(totalPerDay[d] || 0)}</td>`
-    ).join('');
-
+    const headerCols = days.map(d => `<th>${String(d).padStart(2,'0')}/${monStr}</th>`).join('');
+    const valueCols  = days.map(d => `<td class="num tpd-val">${N(totalPerDay[d] || 0)}</td>`).join('');
     return `
     <div class="breakdown-section">
         <div class="breakdown-title" style="background:#0f766e">📅 Total Per Day</div>
         <div class="table-scroll">
         <table class="breakdown-table">
             <thead><tr>
-                <th class="cat-col">Date</th>
-                ${headerCols}
-                <th class="total-col">Grand Total</th>
+                <th class="cat-col">Date</th>${headerCols}<th class="total-col">Grand Total</th>
             </tr></thead>
             <tbody><tr>
                 <td class="cat-name"><strong>Total</strong></td>
@@ -450,39 +519,20 @@ function totalPerDayHtml(month, totalPerDay) {
     </div>`;
 }
 
-// ── Section Breakdown: date-columns × category-rows ──────────────────────────
 function sectionBreakdownHtml(month, dailyData, numDays) {
-    const monthIdx = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].indexOf(month) + 1;
+    const monthIdx = MONTHS.indexOf(month) + 1;
     const monStr = String(monthIdx).padStart(2,'0');
-
-    // Build one table per section
     const SECTION_NAMES = Object.keys(dailyData);
     let html = '';
-
     for (const section of SECTION_NAMES) {
         const cats = dailyData[section];
-
-        // Only show categories that have at least one entry
-        const activeCats = Object.keys(cats).filter(cat =>
-            Object.values(cats[cat]).some(v => v > 0)
-        );
+        const activeCats = Object.keys(cats).filter(cat => Object.values(cats[cat]).some(v => v > 0));
         if (activeCats.length === 0) continue;
-
-        // Only show days that have at least one value IN THIS SECTION
         const sectionDays = new Set();
-        activeCats.forEach(cat => {
-            Object.keys(cats[cat]).forEach(d => sectionDays.add(Number(d)));
-        });
+        activeCats.forEach(cat => Object.keys(cats[cat]).forEach(d => sectionDays.add(Number(d))));
         const days = [...sectionDays].sort((a, b) => a - b);
         if (days.length === 0) continue;
-
-        // Header row: Category | date1 | date2 | ... | Total
-        const headerCols = days.map(d => {
-            const ds = String(d).padStart(2,'0');
-            return `<th>${ds}/${monStr}</th>`;
-        }).join('');
-
-        // Category rows — only cells with values shown, zeros skipped
+        const headerCols = days.map(d => `<th>${String(d).padStart(2,'0')}/${monStr}</th>`).join('');
         const bodyRows = activeCats.map(cat => {
             let rowTotal = 0;
             const cells = days.map(d => {
@@ -492,32 +542,24 @@ function sectionBreakdownHtml(month, dailyData, numDays) {
             }).join('');
             return `<tr><td class="cat-name">${cat}</td>${cells}<td class="num total-cell">${N(rowTotal)}</td></tr>`;
         }).join('');
-
-        // Section total row — only non-zero day totals shown
         const secTotals = days.map(d => {
-            const t = activeCats.reduce((sum, cat) => sum + (cats[cat][d] || 0), 0);
+            const t = activeCats.reduce((s, cat) => s + (cats[cat][d] || 0), 0);
             return t ? `<td class="num sec-total">${N(t)}</td>` : `<td class="num sec-total"></td>`;
         }).join('');
-        const grandTotal = activeCats.reduce((sum, cat) =>
-            sum + Object.values(cats[cat]).reduce((a,b) => a+b, 0), 0);
-
+        const grandTotal = activeCats.reduce((s, cat) => s + Object.values(cats[cat]).reduce((a,b) => a+b, 0), 0);
         const isIncome = section === 'INCOME';
         const headerBg = isIncome ? '#166534' : section === 'Petty Cash Used' ? '#7c3aed' : '#1e3a5f';
-
         html += `
         <div class="breakdown-section">
             <div class="breakdown-title" style="background:${headerBg}">${section}</div>
             <div class="table-scroll">
             <table class="breakdown-table">
                 <thead><tr>
-                    <th class="cat-col">Category</th>
-                    ${headerCols}
-                    <th class="total-col">Total</th>
+                    <th class="cat-col">Category</th>${headerCols}<th class="total-col">Total</th>
                 </tr></thead>
                 <tbody>${bodyRows}</tbody>
                 <tfoot><tr>
-                    <td class="cat-name"><strong>Total</strong></td>
-                    ${secTotals}
+                    <td class="cat-name"><strong>Total</strong></td>${secTotals}
                     <td class="num total-cell"><strong>${N(grandTotal)}</strong></td>
                 </tr></tfoot>
             </table>
@@ -527,21 +569,17 @@ function sectionBreakdownHtml(month, dailyData, numDays) {
     return html || '<p class="empty">No data.</p>';
 }
 
-
-// ── Visual Analysis: pie charts for sections and category breakdowns ──────────
 const PIE_COLORS = [
     '#2563eb','#16a34a','#dc2626','#9333ea','#ea580c','#0891b2',
     '#ca8a04','#db2777','#65a30d','#7c3aed','#0f766e','#c2410c',
     '#1d4ed8','#15803d','#b91c1c','#6d28d9'
 ];
 
-function buildPieSvg(slices, idPrefix) {
-    // slices = [{label, value, pct, color}]
+function buildPieSvg(slices) {
     const cx = 110, cy = 110, r = 90;
     let paths = '';
-    let angle = -Math.PI / 2; // start from top
-
-    slices.forEach((s, i) => {
+    let angle = -Math.PI / 2;
+    slices.forEach(s => {
         const sweep = s.pct / 100 * 2 * Math.PI;
         const x1 = cx + r * Math.cos(angle);
         const y1 = cy + r * Math.sin(angle);
@@ -549,22 +587,16 @@ function buildPieSvg(slices, idPrefix) {
         const x2 = cx + r * Math.cos(angle);
         const y2 = cy + r * Math.sin(angle);
         const large = sweep > Math.PI ? 1 : 0;
-
-        // Midpoint for percentage label
         const midAngle = angle - sweep / 2;
         const lx = cx + (r * 0.65) * Math.cos(midAngle);
         const ly = cy + (r * 0.65) * Math.sin(midAngle);
         const pctLabel = s.pct >= 4 ? s.pct.toFixed(1) + '%' : '';
-
         paths += `<path d="M${cx},${cy} L${x1.toFixed(2)},${y1.toFixed(2)} A${r},${r} 0 ${large},1 ${x2.toFixed(2)},${y2.toFixed(2)} Z"
             fill="${s.color}" stroke="white" stroke-width="1.5"/>`;
-        if (pctLabel) {
+        if (pctLabel)
             paths += `<text x="${lx.toFixed(2)}" y="${ly.toFixed(2)}" text-anchor="middle" dominant-baseline="middle"
                 fill="white" font-size="10" font-weight="700">${pctLabel}</text>`;
-        }
     });
-
-    // Legend below pie
     const legendItems = slices.map((s, i) => {
         const row = Math.floor(i / 2);
         const colx = (i % 2) * 110 + 10;
@@ -572,92 +604,94 @@ function buildPieSvg(slices, idPrefix) {
         return `<rect x="${colx}" y="${coly}" width="12" height="12" fill="${s.color}" rx="2"/>
 <text x="${colx + 16}" y="${coly + 10}" font-size="10" fill="#334155">${s.label.length > 12 ? s.label.slice(0,11)+'…' : s.label}</text>`;
     }).join('');
-
     const legendRows = Math.ceil(slices.length / 2);
     const svgH = 230 + legendRows * 22 + 8;
-
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 ${svgH}" style="width:100%;max-width:280px;display:block;margin:0 auto">
-${paths}${legendItems}
-</svg>`;
+${paths}${legendItems}</svg>`;
 }
 
 function sectionsPieHtml(sectionData, titlePrefix) {
-    // Expense sections only (exclude INCOME for expense pie, show INCOME separately)
     const expenseSlices = [], incomeSlices = [];
     let totalExp = 0, totalInc = 0;
-
     Object.entries(sectionData).forEach(([sec, cats]) => {
         const total = Object.values(cats).reduce((a,b) => a+b, 0);
         if (total === 0) return;
         if (sec === 'INCOME') { totalInc += total; incomeSlices.push({ label: sec, value: total }); }
         else { totalExp += total; expenseSlices.push({ label: sec, value: total }); }
     });
-
     const buildPct = (items, total) => items
         .map((s, i) => ({ ...s, pct: total > 0 ? (s.value / total * 100) : 0, color: PIE_COLORS[i % PIE_COLORS.length] }))
         .sort((a, b) => b.value - a.value);
-
-    let html = '<div class="viz-wrap">';
-    html += '<div class="viz-title">📊 Visual Analysis</div>';
-
+    let html = '<div class="viz-wrap"><div class="viz-title">📊 Visual Analysis</div>';
     if (expenseSlices.length > 0) {
-        const slices = buildPct(expenseSlices, totalExp);
-        html += `<div class="viz-card">
-            <div class="viz-subtitle">💸 Expense Breakdown by Section</div>
-            ${buildPieSvg(slices, titlePrefix + '_exp')}
-        </div>`;
+        html += `<div class="viz-card"><div class="viz-subtitle">💸 Expense Breakdown by Section</div>${buildPieSvg(buildPct(expenseSlices, totalExp))}</div>`;
     }
     if (incomeSlices.length > 0) {
-        const slices = buildPct(incomeSlices, totalInc);
-        html += `<div class="viz-card">
-            <div class="viz-subtitle">💵 Income Breakdown by Section</div>
-            ${buildPieSvg(slices, titlePrefix + '_inc')}
-        </div>`;
+        html += `<div class="viz-card"><div class="viz-subtitle">💵 Income Breakdown by Section</div>${buildPieSvg(buildPct(incomeSlices, totalInc))}</div>`;
     }
     html += '</div>';
     return html;
 }
 
 function breakdownPieHtml(sectionData, titlePrefix) {
-    // One pie per section showing category breakdown
     let html = '<div class="viz-wrap"><div class="viz-title">📊 Visual Analysis — Category Breakdown</div>';
     let hasAny = false;
-
     Object.entries(sectionData).forEach(([sec, cats], si) => {
         const items = Object.entries(cats).filter(([,v]) => v > 0);
         if (items.length === 0) return;
         const total = items.reduce((s,[,v]) => s+v, 0);
         if (total === 0) return;
         hasAny = true;
-        const slices = items
-            .sort((a,b) => b[1]-a[1])
-            .map(([cat, val], i) => ({
-                label: cat, value: val,
-                pct: val / total * 100,
-                color: PIE_COLORS[i % PIE_COLORS.length]
-            }));
-        html += `<div class="viz-card">
-            <div class="viz-subtitle">${sec}</div>
-            ${buildPieSvg(slices, titlePrefix + '_' + si)}
-        </div>`;
+        const slices = items.sort((a,b) => b[1]-a[1]).map(([cat,val], i) => ({
+            label: cat, value: val, pct: val / total * 100, color: PIE_COLORS[i % PIE_COLORS.length]
+        }));
+        html += `<div class="viz-card"><div class="viz-subtitle">${sec}</div>${buildPieSvg(slices)}</div>`;
     });
-
     html += '</div>';
     return hasAny ? html : '';
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SHARED CSS
+// Added:
+//   .sum-box-featured  — highlighted card for the two bank balance metrics
+//   .pill              — status badge (Healthy / Moderate / Low)
+//   .bb-*              — Bank Balance table styles
+//   .bb-mini-*         — Mini bank balance card inside month panels
+// ─────────────────────────────────────────────────────────────────────────────
 const COMMON_CSS = `
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f1f5f9; color: #1e293b; }
-.header { background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%); color: white; padding: 20px 16px; text-align: center; }
+.header { background: linear-gradient(135deg, #0f766e 0%, #1e3a5f 100%); color: white; padding: 20px 16px; text-align: center; }
 .header h1 { font-size: 20px; font-weight: 700; }
-.header p { font-size: 12px; opacity: .75; margin-top: 3px; }
+.header p  { font-size: 12px; opacity: .75; margin-top: 3px; }
+
+/* ── Summary cards ── */
 .summary-boxes { display: flex; flex-direction: column; gap: 10px; padding: 14px; }
 .sum-box { background: white; border-radius: 10px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
-.sum-box-title { font-size: 13px; font-weight: 700; border-left: 3px solid; padding-left: 8px; margin-bottom: 10px; }
-.sum-row { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px solid #f1f5f9; }
+
+/* FEATURED card — Bank Balance (I Can Used + I Have Left) */
+.sum-box-featured {
+    background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%);
+    border: 2px solid #0f766e;
+    border-radius: 12px;
+    padding: 16px;
+    box-shadow: 0 2px 8px rgba(15,118,110,0.15);
+}
+.sum-box-featured .sum-value { font-size: 16px !important; }
+.sum-box-title { font-size: 13px; font-weight: 700; border-left: 3px solid; padding-left: 8px; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sum-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid #f1f5f9; }
 .sum-row:last-child { border-bottom: none; }
-.sum-label { font-size: 12px; color: #64748b; }
-.sum-value { font-size: 14px; font-weight: 700; }
+.sum-label  { font-size: 12px; color: #64748b; }
+.sum-value  { font-size: 14px; font-weight: 700; }
+
+/* ── Status pills ── */
+.pill { display: inline-block; font-size: 10px; padding: 2px 8px; border-radius: 20px; font-weight: 700; letter-spacing: .3px; }
+.pill-good { background: #dcfce7; color: #15803d; }
+.pill-warn { background: #fef9c3; color: #a16207; }
+.pill-low  { background: #fee2e2; color: #b91c1c; }
+
+/* ── Section tabs ── */
 .section-wrap { padding: 0 14px 28px; }
 .section-title { font-size: 13px; font-weight: 600; color: #475569; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 8px; }
 .tab-bar { display: flex; overflow-x: auto; gap: 6px; padding: 0 0 8px; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
@@ -666,6 +700,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .tab-btn.active { background: #1e3a5f; border-color: #1e3a5f; color: white; }
 .tab-panel { display: none; }
 .tab-panel.active { display: block; }
+
+/* ── Tables ── */
 table { width: 100%; border-collapse: collapse; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
 td { padding: 9px 13px; font-size: 13px; border-bottom: 1px solid #f1f5f9; }
 td.num { text-align: right; font-weight: 600; }
@@ -674,10 +710,14 @@ tr:last-child td { border-bottom: none; }
 .empty { text-align: center; color: #94a3b8; font-size: 13px; padding: 20px; }
 .empty-row { text-align: center; color: #94a3b8; }
 .footer { text-align: center; font-size: 11px; color: #94a3b8; padding: 16px; }
+
+/* ── Viz ── */
 .viz-wrap { padding: 0 14px 8px; }
-.viz-title { font-size: 13px; font-weight: 700; color: #1e3a5f; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 10px; padding-top: 6px; }
+.viz-title    { font-size: 13px; font-weight: 700; color: #1e3a5f; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 10px; padding-top: 6px; }
 .viz-subtitle { font-size: 12px; font-weight: 600; color: #475569; margin-bottom: 6px; }
-.viz-card { background: white; border-radius: 10px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.08); margin-bottom: 12px; }
+.viz-card     { background: white; border-radius: 10px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.08); margin-bottom: 12px; }
+
+/* ── Breakdown ── */
 .breakdown-section { margin-bottom: 18px; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
 .breakdown-title { color: white; padding: 9px 14px; font-size: 12px; font-weight: 700; }
 .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
@@ -685,17 +725,69 @@ tr:last-child td { border-bottom: none; }
 .breakdown-table th { background: #f1f5f9; color: #475569; padding: 8px 10px; font-size: 11px; text-align: right; white-space: nowrap; border-bottom: 2px solid #e2e8f0; }
 .breakdown-table th.cat-col { text-align: left; min-width: 130px; position: sticky; left: 0; background: #f1f5f9; z-index: 1; }
 .breakdown-table th.total-col { background: #e2e8f0; }
-.cat-name { font-size: 12px; min-width: 130px; position: sticky; left: 0; background: white; z-index: 1; }
+.cat-name  { font-size: 12px; min-width: 130px; position: sticky; left: 0; background: white; z-index: 1; }
 .empty-cell { color: #94a3b8; font-weight: 400; }
 .total-cell { background: #f8fafc; font-weight: 700; }
-.sec-total { font-weight: 600; color: #334155; }
-.tpd-val { font-weight: 600; color: #0f766e; }
+.sec-total  { font-weight: 600; color: #334155; }
+.tpd-val    { font-weight: 600; color: #0f766e; }
+
+/* ── Main tabs ── */
 .main-tabs { display: flex; gap: 8px; padding: 14px 14px 0; border-bottom: 2px solid #e2e8f0; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; background: white; margin-bottom: 14px; }
 .main-tabs::-webkit-scrollbar { display: none; }
 .main-tab-btn { flex-shrink: 0; padding: 9px 16px; font-size: 13px; font-weight: 600; border: none; background: transparent; color: #64748b; cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -2px; }
-.main-tab-btn.active { color: #1e3a5f; border-bottom-color: #1e3a5f; }
+.main-tab-btn.active { color: #0f766e; border-bottom-color: #0f766e; }
 .main-tab-panel { display: none; }
 .main-tab-panel.active { display: block; }
+
+/* ─────────────────────────────────────────────────────────────────────────── */
+/* BANK BALANCE TABLE (yearly overview)                                        */
+/* ─────────────────────────────────────────────────────────────────────────── */
+.bb-section {
+    margin: 14px 14px 20px;
+    background: white;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(15,118,110,0.12);
+    border: 1.5px solid #0f766e;
+}
+.bb-title {
+    background: linear-gradient(135deg, #0f766e 0%, #1e3a5f 100%);
+    color: white;
+    padding: 11px 16px;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: .3px;
+}
+.bb-table { width: max-content; min-width: 100%; border-radius: 0; box-shadow: none; }
+.bb-head-month  { text-align: left; min-width: 60px; background: #f0fdf4; position: sticky; left: 0; z-index: 1; padding: 10px 12px; font-size: 11px; color: #475569; border-bottom: 2px solid #d1fae5; }
+.bb-head-num    { text-align: right; padding: 10px 12px; font-size: 11px; color: #475569; background: #f0fdf4; border-bottom: 2px solid #d1fae5; white-space: nowrap; }
+.bb-head-can    { background: #ecfdf5 !important; color: #0f766e !important; font-weight: 700; }
+.bb-head-left   { background: #eff6ff !important; color: #1e40af !important; font-weight: 700; }
+.bb-head-status { text-align: center; padding: 10px 12px; font-size: 11px; color: #475569; background: #f0fdf4; border-bottom: 2px solid #d1fae5; }
+.bb-month   { font-weight: 700; font-size: 13px; padding: 10px 12px; min-width: 60px; position: sticky; left: 0; background: white; z-index: 1; border-bottom: 1px solid #f1f5f9; }
+.bb-num     { text-align: right; padding: 10px 12px; font-size: 13px; border-bottom: 1px solid #f1f5f9; }
+.bb-income  { color: #16a34a; font-weight: 600; }
+.bb-expense { color: #dc2626; font-weight: 600; }
+.bb-can     { color: #0f766e; font-weight: 700; background: rgba(15,118,110,0.04); }
+.bb-left    { color: #1e40af; font-weight: 700; background: rgba(30,64,175,0.04); }
+.bb-diff    { font-weight: 700; }
+.bb-status  { text-align: center; padding: 10px 12px; border-bottom: 1px solid #f1f5f9; }
+.bb-empty   { color: #94a3b8; font-weight: 400; }
+
+/* ─────────────────────────────────────────────────────────────────────────── */
+/* BANK BALANCE MINI CARD (inside month panels)                                */
+/* ─────────────────────────────────────────────────────────────────────────── */
+.bb-mini {
+    margin: 0 14px 14px;
+    background: linear-gradient(135deg, #f0fdf4 0%, #eff6ff 100%);
+    border: 1.5px solid #0f766e;
+    border-radius: 10px;
+    padding: 12px 14px;
+}
+.bb-mini-row { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px solid rgba(15,118,110,0.1); }
+.bb-mini-row:last-child { border-bottom: none; }
+.bb-mini-label { font-size: 12px; color: #475569; font-weight: 500; }
+.bb-mini-val   { font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
 `;
 
 const TAB_JS = `
@@ -708,12 +800,13 @@ function showTab(id, btn) {
 }
 `;
 
-// ── Month HTML ────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// MONTH HTML — now includes Bank Balance mini card at the top of each view
+// ─────────────────────────────────────────────────────────────────────────────
 async function generateMonthHtml(month) {
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.readFile(getExcelPath());
 
-    // Load all months up to target to compute correct cumulative running balance
     const allData = {};
     let startingBalance = 0;
     for (const m of MONTHS) {
@@ -728,6 +821,7 @@ async function generateMonthHtml(month) {
 
     const activeYear = require('./config').getActiveYear() || new Date().getFullYear();
     const numDays = MONTH_DAYS[month];
+
     const mainTabJs = `
 function showMainTab(id, btn) {
     document.querySelectorAll('.main-tab-panel').forEach(p => p.classList.remove('active'));
@@ -740,9 +834,16 @@ function showMainTab(id, btn) {
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${month} ${activeYear} Report</title>
 <style>${COMMON_CSS}</style></head><body>
-<div class="header"><h1>💰 ${month} ${activeYear} Report</h1>
-<p>Gofy · ${new Date().toLocaleDateString('en-PK',{day:'numeric',month:'short',year:'numeric'})}</p></div>
+<div class="header">
+    <h1>💰 ${month} ${activeYear} Report</h1>
+    <p>Gofy · ${new Date().toLocaleDateString('en-PK',{day:'numeric',month:'short',year:'numeric'})}</p>
+</div>
+
+${/* Bank balance mini card — shown prominently at the very top */''}
+${bankBalanceMiniHtml(d)}
+
 ${summaryCardsHtml(d)}
+
 <div class="main-tabs">
   <button class="main-tab-btn active" onclick="showMainTab('mt_sections',this)">📂 Sections</button>
   <button class="main-tab-btn" onclick="showMainTab('mt_breakdown',this)">📊 Section Breakdown</button>
@@ -764,12 +865,15 @@ ${summaryCardsHtml(d)}
 <script>${TAB_JS}${mainTabJs}</script></body></html>`;
 }
 
-// ── Year HTML ─────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// YEAR HTML — includes:
+//   1. Bank Balance Monthly Overview table (all 12 months, Can Used vs Have Left)
+//   2. Bank Balance mini card inside each month panel
+// ─────────────────────────────────────────────────────────────────────────────
 async function generateYearHtml() {
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.readFile(getExcelPath());
 
-    // Load all months and compute cumulative running balances
     const allData = {};
     let startingBalance = 0;
     for (const month of MONTHS) {
@@ -778,38 +882,35 @@ async function generateYearHtml() {
     }
     computeRunningBalances(allData, startingBalance);
 
-    // Year totals — sum income/expense; balance comes from last active month
-    let yrIncome = 0, yrExpenses = 0, yrPCAvail = 0, yrPCUsed = 0, yrPCLeft = 0;
+    let yrIncome = 0, yrExpenses = 0, yrPCAvail = 0, yrPCUsed = 0;
+    let yrBalanceCanUse = 0;   // ← NEW: sum of all months' "Balance I Can Used (Bank)"
     let lastActiveMonth = null;
     MONTHS.forEach(m => {
         if (!allData[m]) return;
-        yrIncome   += allData[m].totalIncome;
-        yrExpenses += allData[m].totalExpenses;
-        yrPCAvail  += allData[m].pettyCashAvailable;
-        yrPCUsed   += allData[m].pettyCashUsed;
+        yrIncome       += allData[m].totalIncome;
+        yrExpenses     += allData[m].totalExpenses;
+        yrPCAvail      += allData[m].pettyCashAvailable;
+        yrPCUsed       += allData[m].pettyCashUsed;
+        yrBalanceCanUse += (allData[m].balanceCanUse || 0);
         if (allData[m].totalIncome > 0 || allData[m].totalExpenses > 0) lastActiveMonth = m;
     });
     const yrNet    = yrIncome - yrExpenses;
-    const lastData = lastActiveMonth ? allData[lastActiveMonth] : { balanceBank: startingBalance, balancePettyBank: startingBalance, pettyCashLeft: 0 };
-    yrPCLeft = lastData.pettyCashLeft;
+    const lastData = lastActiveMonth
+        ? allData[lastActiveMonth]
+        : { balanceBank: startingBalance, balancePettyBank: startingBalance, pettyCashLeft: 0, balanceHaveLeft: startingBalance };
+    const yrPCLeft = lastData.pettyCashLeft;
+
+    const activeYear = require('./config').getActiveYear() || new Date().getFullYear();
 
     // Month tab buttons
     const monthBtns = MONTHS.map((m, i) =>
         `<button class="tab-btn${i===0?' active':''}" onclick="showMonth('${m}',this)">${m}</button>`
     ).join('');
 
-    // Month tab panels
+    // Month tab panels — each includes a Bank Balance mini card
     const monthPanels = MONTHS.map((m, i) => {
         const d = allData[m];
         if (!d) return `<div id="month_${m}" class="month-panel${i===0?' active':''}"><p class="empty">No data</p></div>`;
-
-        const sectionRows = Object.entries(d.sectionData).map(([sec, cats]) => {
-            const total = Object.values(cats).reduce((a, b) => a + b, 0);
-            if (total === 0) return '';
-            const isInc = sec === 'INCOME';
-            return `<tr><td>${sec}</td><td class="num" style="color:${isInc?'#16a34a':'#334155'}">${N(total)}</td></tr>`;
-        }).join('');
-
         const numDaysM = MONTH_DAYS[m];
         const mainTabJsM = `
 function showMainTab_${m}(id, btn) {
@@ -818,41 +919,50 @@ function showMainTab_${m}(id, btn) {
     document.getElementById(id).classList.add('active');
     btn.classList.add('active');
 }`;
-        return `<div id="month_${m}" class="month-panel${i===0?' active':''}">
-        ${summaryCardsHtml(d)}
-        <div class="main-tabs">
-          <button class="main-tab-btn active" onclick="showMainTab_${m}('mt_${m}_sections',this)">📂 Sections</button>
-          <button class="main-tab-btn" onclick="showMainTab_${m}('mt_${m}_breakdown',this)">📊 Section Breakdown</button>
-        </div>
-        <div id="mt_${m}_sections" class="main-tab-panel active">
-          <div class="section-wrap">
-            ${sectionTabsHtml(d.sectionData, m + '_', { month: m, dailyRows: d.pettyCashDailyRows || [] })}
-          </div>
-          ${sectionsPieHtml(d.sectionData, m)}
-        </div>
-        <div id="mt_${m}_breakdown" class="main-tab-panel">
-          <div class="section-wrap">
-            ${totalPerDayHtml(m, d.totalPerDay || {})}
-            ${sectionBreakdownHtml(m, d.dailyData || {}, numDaysM)}
-          </div>
-          ${breakdownPieHtml(d.sectionData, m)}
-        </div>
-        <div style="height:16px"></div>
-        <script>${mainTabJsM}</script>
+        return `
+        <div id="month_${m}" class="month-panel${i===0?' active':''}">
+            ${/* Bank balance mini card at the top of each month panel */''}
+            ${bankBalanceMiniHtml(d)}
+            ${summaryCardsHtml(d)}
+            <div class="main-tabs">
+              <button class="main-tab-btn active" onclick="showMainTab_${m}('mt_${m}_sections',this)">📂 Sections</button>
+              <button class="main-tab-btn" onclick="showMainTab_${m}('mt_${m}_breakdown',this)">📊 Section Breakdown</button>
+            </div>
+            <div id="mt_${m}_sections" class="main-tab-panel active">
+              <div class="section-wrap">
+                ${sectionTabsHtml(d.sectionData, m + '_', { month: m, dailyRows: d.pettyCashDailyRows || [] })}
+              </div>
+              ${sectionsPieHtml(d.sectionData, m)}
+            </div>
+            <div id="mt_${m}_breakdown" class="main-tab-panel">
+              <div class="section-wrap">
+                ${totalPerDayHtml(m, d.totalPerDay || {})}
+                ${sectionBreakdownHtml(m, d.dailyData || {}, numDaysM)}
+              </div>
+              ${breakdownPieHtml(d.sectionData, m)}
+            </div>
+            <div style="height:16px"></div>
+            <script>${mainTabJsM}</script>
         </div>`;
     }).join('');
 
     const yrSummary = summaryCardsHtml({
-        pettyCashAvailable: yrPCAvail, pettyCashUsed: yrPCUsed, pettyCashLeft: yrPCLeft,
-        totalIncome: yrIncome, totalExpenses: yrExpenses, net: yrNet,
+        balanceCanUse:    yrBalanceCanUse,
+        balanceHaveLeft:  lastData.balanceHaveLeft || lastData.balanceBank,
         balanceBank:      lastData.balanceBank,
         balancePettyBank: lastData.balancePettyBank,
+        pettyCashAvailable: yrPCAvail,
+        pettyCashUsed:    yrPCUsed,
+        pettyCashLeft:    yrPCLeft,
+        totalIncome:      yrIncome,
+        totalExpenses:    yrExpenses,
+        net:              yrNet,
         startingBalance,
     });
 
     return `<!DOCTYPE html><html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>2026 Year Overview — SavingHomeLab</title>
+<title>${activeYear} Year Overview — SavingHomeLab</title>
 <style>
 ${COMMON_CSS}
 .month-panel { display: none; }
@@ -863,15 +973,23 @@ ${COMMON_CSS}
 .month-tab-bar::-webkit-scrollbar { display: none; }
 th { background: #1e3a5f; color: white; padding: 9px 13px; font-size: 12px; text-align: left; }
 </style></head><body>
-<div class="header"><h1>📊 2026 Year Overview</h1>
-<p>SavingHomeLab · ${new Date().toLocaleDateString('en-PK',{day:'numeric',month:'short',year:'numeric'})}</p></div>
-<div class="year-summary">
-<h3>2026 Year Totals</h3>
-${yrSummary}
+<div class="header">
+    <h1>📊 ${activeYear} Year Overview</h1>
+    <p>SavingHomeLab · ${new Date().toLocaleDateString('en-PK',{day:'numeric',month:'short',year:'numeric'})}</p>
 </div>
+
+${/* Year-level Bank Balance table — the centrepiece of the yearly view */''}
+${bankBalanceTableHtml(allData, activeYear)}
+
+<div class="year-summary">
+    <h3>${activeYear} Year Totals</h3>
+    ${yrSummary}
+</div>
+
 <div class="month-tab-bar">${monthBtns}</div>
 ${monthPanels}
-<div class="footer">SavingHomeLab Bot · 2026</div>
+<div class="footer">SavingHomeLab Bot · ${activeYear}</div>
+
 <script>
 ${TAB_JS}
 function showMonth(m, btn) {
@@ -884,8 +1002,7 @@ function showMonth(m, btn) {
 </script></body></html>`;
 }
 
-
-// ── WhatsApp summary data (with running balances) ────────────────────────────
+// ── WhatsApp summary data ─────────────────────────────────────────────────────
 async function getMonthReport(month) {
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.readFile(getExcelPath());
@@ -912,9 +1029,8 @@ async function getYearReport() {
     computeRunningBalances(allData, startingBalance);
 
     let totalIncome = 0, totalExpenses = 0, totalPCAvail = 0, totalPCUsed = 0;
-    let lastData = { balanceBank: startingBalance, balancePettyBank: startingBalance, pettyCashLeft: 0 };
+    let lastData = { balanceBank: startingBalance, balancePettyBank: startingBalance, pettyCashLeft: 0, balanceHaveLeft: startingBalance };
     const monthly = {};
-    // Carry forward pettyCashAvailable — Budget row 11 may only be set for some months
     let carryPCAvail = 0;
     for (const m of MONTHS) {
         const d = allData[m];
@@ -922,13 +1038,17 @@ async function getYearReport() {
         if (d.pettyCashAvailable > 0) carryPCAvail = d.pettyCashAvailable;
         const pcAvail = carryPCAvail;
         const pcLeft  = pcAvail - d.pettyCashUsed;
-        totalIncome    += d.totalIncome;
-        totalExpenses  += d.totalExpenses;
-        totalPCAvail   += d.pettyCashAvailable > 0 ? d.pettyCashAvailable : 0;
-        totalPCUsed    += d.pettyCashUsed;
+        totalIncome   += d.totalIncome;
+        totalExpenses += d.totalExpenses;
+        totalPCAvail  += d.pettyCashAvailable > 0 ? d.pettyCashAvailable : 0;
+        totalPCUsed   += d.pettyCashUsed;
         if (d.totalIncome > 0 || d.totalExpenses > 0) lastData = d;
-        monthly[m] = { income: d.totalIncome, expenses: d.totalExpenses, net: d.net,
-                       pettyCashAvailable: pcAvail, pettyCashUsed: d.pettyCashUsed, pettyCashLeft: pcLeft };
+        monthly[m] = {
+            income: d.totalIncome, expenses: d.totalExpenses, net: d.net,
+            pettyCashAvailable: pcAvail, pettyCashUsed: d.pettyCashUsed, pettyCashLeft: pcLeft,
+            balanceCanUse:  d.balanceCanUse  || 0,   // ← NEW: exposed in year report
+            balanceHaveLeft: d.balanceHaveLeft || d.balanceBank || 0, // ← NEW
+        };
     }
     return {
         totalIncome, totalExpenses,
@@ -938,27 +1058,22 @@ async function getYearReport() {
         pettyCashLeft: lastData.pettyCashLeft,
         balanceBank: lastData.balanceBank,
         balancePettyBank: lastData.balancePettyBank,
+        balanceCanUse:   lastData.balanceCanUse  || 0,   // ← NEW
+        balanceHaveLeft: lastData.balanceHaveLeft || lastData.balanceBank || 0, // ← NEW
         startingBalance,
         monthly
     };
 }
 
-
 // ── Year Template Creator ─────────────────────────────────────────────────────
 async function createYearTemplate(year, templatePath) {
     const { YEAR_FOLDER } = require('./config');
-    const folder = YEAR_FOLDER;
-    const outputPath = require('path').join(folder, `Saving-${year}.xlsx`);
+    const outputPath = require('path').join(YEAR_FOLDER, `Saving-${year}.xlsx`);
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.readFile(templatePath);
-
-    // 1. Section-Category: update year cell (D1) and all date cells
     const sc = wb.getWorksheet('Section-Category');
     if (sc) {
-        // D1 = year integer
         sc.getCell('D1').value = year;
-
-        // Date cells are in rows 6-17 (Jan-Dec), cols 4-35 (D-AH)
         for (let row = 6; row <= 17; row++) {
             sc.getRow(row).eachCell({ includeEmpty: false }, (cell) => {
                 if (cell.value instanceof Date) {
@@ -969,8 +1084,6 @@ async function createYearTemplate(year, templatePath) {
             });
         }
     }
-
-    // 2. Budget sheet: replace title
     const budget = wb.getWorksheet('Budget');
     if (budget) {
         const titleCell = budget.getCell('A1');
@@ -978,13 +1091,10 @@ async function createYearTemplate(year, templatePath) {
             titleCell.value = 'Budget Manager v0.1';
         }
     }
-
     await wb.xlsx.writeFile(outputPath);
     return { ok: true, path: outputPath, year };
 }
 
-
-// ── Read all filled days for a single category ────────────────────────────────
 async function getCategoryDayValues(month, section, category) {
     const row = ROW_MAP[`${section}|${category}`];
     if (!row) return {};
@@ -1001,8 +1111,6 @@ async function getCategoryDayValues(month, section, category) {
     return filled;
 }
 
-
-// ── Starting Balance (Budget sheet Row 3, Col 1) ──────────────────────────────
 async function readStartingBalance() {
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.readFile(getExcelPath());

@@ -8,25 +8,33 @@ let nodemailer;
 try { nodemailer = require('nodemailer'); }
 catch { nodemailer = null; }
 
-const SMTP_HOST   = process.env.SMTP_HOST  || '';
-const SMTP_PORT   = parseInt(process.env.SMTP_PORT || '587', 10);
-const SMTP_USER   = process.env.SMTP_USER  || '';
-const SMTP_PASS   = (process.env.SMTP_PASS  || '').replace(/\s+/g, ''); // strip display spaces from Gmail app passwords
-const SMTP_FROM   = process.env.SMTP_FROM  || SMTP_USER;
-const ALERT_EMAIL = (process.env.ALERT_EMAIL || '').split(',').map(e => e.trim()).filter(Boolean);
+// ── Lazy env readers — read at call time, not module load time ───────────────
+// config.js parses .env AFTER mailer.js is first require()d, so reading
+// process.env here (top-level) would always see empty strings.
+const cfg = {
+    get host()  { return process.env.cfg.host || ''; },
+    get port()  { return parseInt(process.env.cfg.port || '587', 10); },
+    get user()  { return process.env.cfg.user || ''; },
+    get pass()  { return (process.env.SMTP_PASS || '').replace(/\s+/g, ''); },
+    get from()  { return process.env.cfg.from || process.env.cfg.user || ''; },
+    get to()    { return (process.env.ALERT_EMAIL || '').split(',').map(e => e.trim()).filter(Boolean); },
+};
 
 function isConfigured() {
-    return !!(nodemailer && SMTP_HOST && SMTP_USER && SMTP_PASS && ALERT_EMAIL.length);
+    return !!(nodemailer && cfg.host && cfg.user && cfg.pass && cfg.to.length);
 }
 
 let _transport = null;
+let _transportKey = '';   // detect config changes between restarts
 function getTransport() {
-    if (!_transport) {
-        _transport = nodemailer.createTransport({
-            host: SMTP_HOST, port: SMTP_PORT,
-            secure: SMTP_PORT === 465,
-            auth: { user: SMTP_USER, pass: SMTP_PASS },
+    const key = `${cfg.host}:${cfg.port}:${cfg.user}`;
+    if (!_transport || _transportKey !== key) {
+        _transport    = nodemailer.createTransport({
+            host: cfg.host, port: cfg.port,
+            secure: cfg.port === 465,
+            auth: { user: cfg.user, pass: cfg.pass },
         });
+        _transportKey = key;
     }
     return _transport;
 }
@@ -39,8 +47,8 @@ async function send(subject, html) {
     console.log(`📧 [SENDING] ${subject}`);
     try {
         const info = await getTransport().sendMail({
-            from: `"Saving Bot" <${SMTP_FROM}>`,
-            to:   ALERT_EMAIL.join(', '),
+            from: `"Saving Bot" <${cfg.from}>`,
+            to:   cfg.to.join(', '),
             subject, html,
         });
         console.log(`📧 [OK] Delivered → ${info.accepted.join(', ')} (messageId: ${info.messageId})`);
@@ -58,21 +66,21 @@ async function testSmtp() {
         console.log('   Set SMTP_HOST, SMTP_USER, SMTP_PASS, ALERT_EMAIL in .env to enable email alerts.');
         return;
     }
-    console.log(`📧 [SMTP] Testing connection to ${SMTP_HOST}:${SMTP_PORT}...`);
+    console.log(`📧 [SMTP] Testing connection to ${cfg.host}:${cfg.port}...`);
     try {
         await getTransport().verify();
         console.log('📧 [SMTP] Connection OK — sending startup test email...');
     } catch (err) {
         console.error(`📧 [SMTP] Connection FAILED: ${err.message}`);
-        console.error('   Check SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASS in .env');
+        console.error('   Check SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASS in .env in .env');
         return;
     }
 
     const html = buildServiceHtml('#0284c7', '🧪', 'SMTP Test — Saving Bot Started', [
         ['Status',  'Email delivery is working',  '#0f766e'],
-        ['SMTP',    `${SMTP_HOST}:${SMTP_PORT}`,  '#0f172a'],
-        ['From',    SMTP_FROM,                    '#0f172a'],
-        ['To',      ALERT_EMAIL.join(', '),        '#0f172a'],
+        ['SMTP',    `${cfg.host}:${cfg.port}`,  '#0f172a'],
+        ['From',    cfg.from,                    '#0f172a'],
+        ['To',      cfg.to.join(', '),        '#0f172a'],
         ['Time',    ts() + ' PKT',                '#0f172a'],
         ['Info',    'You will receive alerts for data changes and service events.', '#64748b'],
     ]);

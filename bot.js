@@ -70,6 +70,7 @@ client.on('ready', () => {
     ]);
     dashboard.startDashboard();
     refreshDashboardSummary();
+    mailer.testSmtp().catch(() => {});        // SMTP connectivity test on every start
     mailer.alertBotOnline().catch(() => {});
     console.log('✅ Saving-Bot-v0.1 is LIVE!');
     console.log(`🔒 Whitelist: ${WHITELIST.join(', ')}`);

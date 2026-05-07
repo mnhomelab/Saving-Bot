@@ -32,16 +32,55 @@ function getTransport() {
 }
 
 async function send(subject, html) {
-    if (!isConfigured()) return;
+    if (!isConfigured()) {
+        console.log(`📧 [SKIP] Email not configured — would have sent: "${subject}"`);
+        return { sent: false, reason: 'not_configured' };
+    }
+    console.log(`📧 [SENDING] ${subject}`);
     try {
-        await getTransport().sendMail({
+        const info = await getTransport().sendMail({
             from: `"Saving Bot" <${SMTP_FROM}>`,
             to:   ALERT_EMAIL.join(', '),
             subject, html,
         });
-        console.log(`📧 Email sent: ${subject}`);
+        console.log(`📧 [OK] Delivered → ${info.accepted.join(', ')} (messageId: ${info.messageId})`);
+        return { sent: true, messageId: info.messageId };
     } catch (err) {
-        console.error('📧 Mailer error:', err.message);
+        console.error(`📧 [FAIL] ${err.message}`);
+        return { sent: false, reason: err.message };
+    }
+}
+
+// ── SMTP connectivity test — called on bot startup ────────────────────────────
+async function testSmtp() {
+    if (!isConfigured()) {
+        console.log('📧 [SMTP] Not configured — skipping connectivity test.');
+        console.log('   Set SMTP_HOST, SMTP_USER, SMTP_PASS, ALERT_EMAIL in .env to enable email alerts.');
+        return;
+    }
+    console.log(`📧 [SMTP] Testing connection to ${SMTP_HOST}:${SMTP_PORT}...`);
+    try {
+        await getTransport().verify();
+        console.log('📧 [SMTP] Connection OK — sending startup test email...');
+    } catch (err) {
+        console.error(`📧 [SMTP] Connection FAILED: ${err.message}`);
+        console.error('   Check SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASS in .env');
+        return;
+    }
+
+    const html = buildServiceHtml('#0284c7', '🧪', 'SMTP Test — Saving Bot Started', [
+        ['Status',  'Email delivery is working',  '#0f766e'],
+        ['SMTP',    `${SMTP_HOST}:${SMTP_PORT}`,  '#0f172a'],
+        ['From',    SMTP_FROM,                    '#0f172a'],
+        ['To',      ALERT_EMAIL.join(', '),        '#0f172a'],
+        ['Time',    ts() + ' PKT',                '#0f172a'],
+        ['Info',    'You will receive alerts for data changes and service events.', '#64748b'],
+    ]);
+    const result = await send('🧪 Saving Bot: SMTP Test — Startup OK', html);
+    if (result.sent) {
+        console.log('📧 [SMTP] Test email delivered successfully.');
+    } else {
+        console.error(`📧 [SMTP] Test email failed: ${result.reason}`);
     }
 }
 
@@ -279,6 +318,7 @@ async function alertAuthFailure(msg) {
 
 module.exports = {
     isConfigured,
+    testSmtp,
     alertDataChange,
     alertBudgetChange,
     sendDayEndReport,

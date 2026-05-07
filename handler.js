@@ -9,6 +9,7 @@ const {
     MONTHS, MONTH_DAYS, BUDGET_ROWS,
     readMonthValue, writeMonthValue,
     readMonthParts,  writeMonthParts,
+    readBudgetParts, writeBudgetParts,
     readBudgetValue, writeBudgetValue,
     getMonthSummary, getSectionTotals,
     generateMonthHtml, generateYearHtml,
@@ -82,6 +83,40 @@ function conflictMenuMsg(data, day, parts, total) {
         `*4* 🔄 *Replace* — replace entirely with a new value`,
         `*5* ➕ *Add*     — overwrite with a single plain value`,
         `*0* ⬅ Cancel`,
+    ].join('\n');
+}
+
+function budgetConflictMenuMsg(data, parts, total) {
+    return [
+        `⚠️ *Value Exists*`,
+        DLINE,
+        `🏦  ${data.budget_field}`,
+        `📅  ${data.budget_month} 2026`,
+        LINE,
+        `Current formula parts:`,
+        fmtParts(parts),
+        `  _Total: *${fmtNum(total)}*_`,
+        LINE,
+        `What would you like to do?`,
+        `*1* 📎 *Append*  — add a new value to the formula`,
+        `*2* 🗑 *Delete*  — remove one part from the formula`,
+        `*3* ✏️ *Change*  — change one part's value`,
+        `*4* 🔄 *Replace* — replace entirely with a new value`,
+        `*5* ➕ *Add*     — overwrite with a single plain value`,
+        `*0* ⬅ Cancel`,
+    ].join('\n');
+}
+
+function budgetPartsListMsg(data, parts, action) {
+    return [
+        `${action === 'delete' ? '🗑' : '✏️'} *${action === 'delete' ? 'Delete' : 'Change'} a Part*`,
+        DLINE,
+        `🏦  ${data.budget_field}  ·  ${data.budget_month} 2026`,
+        LINE,
+        `Choose which part to ${action}:`,
+        fmtParts(parts),
+        ``,
+        `*0* ⬅ Back`,
     ].join('\n');
 }
 
@@ -608,10 +643,15 @@ async function handleMessage(phone, text) {
     // ── CONFLICT MENU ─────────────────────────────────────────────────────────
     if (state === 'conflict_menu') {
         if (isBack(text) || text === '0') {
+            if (data.conflictType === 'budget') {
+                setState(phone, 'budget_select_month');
+                return await screenBudgetSelectMonth(data.budget_field);
+            }
             setState(phone, 'select_day');
             return await screenSelectDay(data.month, data.section, data.category);
         }
         const { existingParts, existingTotal, day } = data;
+        const isBudget = data.conflictType === 'budget';
 
         if (text === '1') {  // Append
             setState(phone, 'conflict_append');
@@ -627,11 +667,11 @@ async function handleMessage(phone, text) {
         }
         if (text === '2') {  // Delete
             setState(phone, 'conflict_delete');
-            return partsListMsg(data, day, existingParts, 'delete');
+            return isBudget ? budgetPartsListMsg(data, existingParts, 'delete') : partsListMsg(data, day, existingParts, 'delete');
         }
         if (text === '3') {  // Change
             setState(phone, 'conflict_change_pick');
-            return partsListMsg(data, day, existingParts, 'change');
+            return isBudget ? budgetPartsListMsg(data, existingParts, 'change') : partsListMsg(data, day, existingParts, 'change');
         }
         if (text === '4') {  // Replace (formula)
             setState(phone, 'conflict_replace');
@@ -669,20 +709,19 @@ async function handleMessage(phone, text) {
         const amt = parseFloat(text.replace(/,/g, ''));
         if (isNaN(amt) || amt <= 0) return `⚠️ Enter a positive number, or *back* to go back.`;
         const newParts = [...data.existingParts, amt];
-        const result   = await writeMonthParts(data.month, data.section, data.category, data.day, newParts, true);
+        const result = data.conflictType === 'budget'
+            ? await writeBudgetParts(data.budget_field, data.budget_month, newParts, true)
+            : await writeMonthParts(data.month, data.section, data.category, data.day, newParts, true);
         clearSession(phone);
         if (result.ok) {
             const formula = newParts.map(fmtNum).join(' + ');
-            return [
-                `✅ *Appended!*`,
-                LINE,
-                `📅  ${data.month} 2026  ·  Day ${data.day}`,
-                `📂  ${data.section}  ›  ${data.category}`,
+            const loc = data.conflictType === 'budget'
+                ? [`🏦  ${data.budget_field}`, `📅  ${data.budget_month} 2026`]
+                : [`📅  ${data.month} 2026  ·  Day ${data.day}`, `📂  ${data.section}  ›  ${data.category}`];
+            return [`✅ *Appended!*`, LINE, ...loc,
                 `📐  Formula: *${formula}*`,
                 `💰  Total:   *${fmtNum(newParts.reduce((a, b) => a + b, 0))}*`,
-                ``,
-                `_Send *Gofy* to continue._`,
-            ].join('\n');
+                ``, `_Send *Gofy* to continue._`].join('\n');
         }
         return `❌ *Error:* ${result.error}\n_Send *Gofy* to try again._`;
     }
@@ -691,16 +730,20 @@ async function handleMessage(phone, text) {
     if (state === 'conflict_delete') {
         if (isBack(text) || text === '0') {
             setState(phone, 'conflict_menu');
-            return conflictMenuMsg(data, data.day, data.existingParts, data.existingTotal);
+            return data.conflictType === 'budget'
+                ? budgetConflictMenuMsg(data, data.existingParts, data.existingTotal)
+                : conflictMenuMsg(data, data.day, data.existingParts, data.existingTotal);
         }
         const idx = parseInt(text, 10) - 1;
         const { existingParts, day } = data;
         if (isNaN(idx) || idx < 0 || idx >= existingParts.length)
             return `⚠️ Enter a number between *1* and *${existingParts.length}*, or *0* to go back.`;
-        const removed  = existingParts[idx];
-        const newParts = existingParts.filter((_, i) => i !== idx);
+        const removed   = existingParts[idx];
+        const newParts  = existingParts.filter((_, i) => i !== idx);
         const asFormula = newParts.length > 1;
-        const result   = await writeMonthParts(data.month, data.section, data.category, day, newParts, asFormula);
+        const result = data.conflictType === 'budget'
+            ? await writeBudgetParts(data.budget_field, data.budget_month, newParts, asFormula)
+            : await writeMonthParts(data.month, data.section, data.category, day, newParts, asFormula);
         clearSession(phone);
         if (result.ok) {
             const display = newParts.length === 0
@@ -708,16 +751,13 @@ async function handleMessage(phone, text) {
                 : newParts.length === 1
                     ? `*${fmtNum(newParts[0])}*`
                     : `*${newParts.map(fmtNum).join(' + ')}* = *${fmtNum(newParts.reduce((a, b) => a + b, 0))}*`;
-            return [
-                `✅ *Deleted!*`,
-                LINE,
-                `📅  ${data.month} 2026  ·  Day ${day}`,
-                `📂  ${data.section}  ›  ${data.category}`,
+            const loc = data.conflictType === 'budget'
+                ? [`🏦  ${data.budget_field}`, `📅  ${data.budget_month} 2026`]
+                : [`📅  ${data.month} 2026  ·  Day ${day}`, `📂  ${data.section}  ›  ${data.category}`];
+            return [`✅ *Deleted!*`, LINE, ...loc,
                 `🗑  Removed: *${fmtNum(removed)}*`,
                 `📐  Remaining: ${display}`,
-                ``,
-                `_Send *Gofy* to continue._`,
-            ].join('\n');
+                ``, `_Send *Gofy* to continue._`].join('\n');
         }
         return `❌ *Error:* ${result.error}\n_Send *Gofy* to try again._`;
     }
@@ -726,7 +766,9 @@ async function handleMessage(phone, text) {
     if (state === 'conflict_change_pick') {
         if (isBack(text) || text === '0') {
             setState(phone, 'conflict_menu');
-            return conflictMenuMsg(data, data.day, data.existingParts, data.existingTotal);
+            return data.conflictType === 'budget'
+                ? budgetConflictMenuMsg(data, data.existingParts, data.existingTotal)
+                : conflictMenuMsg(data, data.day, data.existingParts, data.existingTotal);
         }
         const idx = parseInt(text, 10) - 1;
         const { existingParts, day } = data;
@@ -747,30 +789,31 @@ async function handleMessage(phone, text) {
     if (state === 'conflict_change_value') {
         if (isBack(text)) {
             setState(phone, 'conflict_change_pick');
-            return partsListMsg(data, data.day, data.existingParts, 'change');
+            return data.conflictType === 'budget'
+                ? budgetPartsListMsg(data, data.existingParts, 'change')
+                : partsListMsg(data, data.day, data.existingParts, 'change');
         }
         const newVal = parseFloat(text.replace(/,/g, ''));
         if (isNaN(newVal) || newVal <= 0) return `⚠️ Enter a positive number, or *back* to go back.`;
         const { existingParts, day, changeIdx } = data;
-        const oldVal  = existingParts[changeIdx];
+        const oldVal   = existingParts[changeIdx];
         const newParts = existingParts.map((v, i) => i === changeIdx ? newVal : v);
         const asFormula = newParts.length > 1;
-        const result   = await writeMonthParts(data.month, data.section, data.category, day, newParts, asFormula);
+        const result = data.conflictType === 'budget'
+            ? await writeBudgetParts(data.budget_field, data.budget_month, newParts, asFormula)
+            : await writeMonthParts(data.month, data.section, data.category, day, newParts, asFormula);
         clearSession(phone);
         if (result.ok) {
             const formula = newParts.length === 1
                 ? `*${fmtNum(newParts[0])}*`
                 : `*${newParts.map(fmtNum).join(' + ')}* = *${fmtNum(newParts.reduce((a, b) => a + b, 0))}*`;
-            return [
-                `✅ *Changed!*`,
-                LINE,
-                `📅  ${data.month} 2026  ·  Day ${day}`,
-                `📂  ${data.section}  ›  ${data.category}`,
+            const loc = data.conflictType === 'budget'
+                ? [`🏦  ${data.budget_field}`, `📅  ${data.budget_month} 2026`]
+                : [`📅  ${data.month} 2026  ·  Day ${day}`, `📂  ${data.section}  ›  ${data.category}`];
+            return [`✅ *Changed!*`, LINE, ...loc,
                 `✏️  Part ${changeIdx + 1}: *${fmtNum(oldVal)}* → *${fmtNum(newVal)}*`,
                 `📐  New formula: ${formula}`,
-                ``,
-                `_Send *Gofy* to continue._`,
-            ].join('\n');
+                ``, `_Send *Gofy* to continue._`].join('\n');
         }
         return `❌ *Error:* ${result.error}\n_Send *Gofy* to try again._`;
     }
@@ -783,19 +826,17 @@ async function handleMessage(phone, text) {
         }
         const newVal = parseFloat(text.replace(/,/g, ''));
         if (isNaN(newVal) || newVal <= 0) return `⚠️ Enter a positive number, or *back* to go back.`;
-        // Replace: single-value formula (stored as plain number since it's one part)
-        const result = await writeMonthParts(data.month, data.section, data.category, data.day, [newVal], false);
+        const result = data.conflictType === 'budget'
+            ? await writeBudgetParts(data.budget_field, data.budget_month, [newVal], false)
+            : await writeMonthParts(data.month, data.section, data.category, data.day, [newVal], false);
         clearSession(phone);
         if (result.ok) {
-            return [
-                `✅ *Replaced!*`,
-                LINE,
-                `📅  ${data.month} 2026  ·  Day ${data.day}`,
-                `📂  ${data.section}  ›  ${data.category}`,
-                `🔄  Old total: *${fmtNum(data.existingTotal)}*  →  New: *${fmtNum(newVal)}*`,
-                ``,
-                `_Send *Gofy* to continue._`,
-            ].join('\n');
+            const loc = data.conflictType === 'budget'
+                ? [`🏦  ${data.budget_field}`, `📅  ${data.budget_month} 2026`]
+                : [`📅  ${data.month} 2026  ·  Day ${data.day}`, `📂  ${data.section}  ›  ${data.category}`];
+            return [`✅ *Replaced!*`, LINE, ...loc,
+                `🔄  Old: *${fmtNum(data.existingTotal)}*  →  New: *${fmtNum(newVal)}*`,
+                ``, `_Send *Gofy* to continue._`].join('\n');
         }
         return `❌ *Error:* ${result.error}\n_Send *Gofy* to try again._`;
     }
@@ -808,18 +849,17 @@ async function handleMessage(phone, text) {
         }
         const newVal = parseFloat(text.replace(/,/g, ''));
         if (isNaN(newVal) || newVal <= 0) return `⚠️ Enter a positive number, or *back* to go back.`;
-        const result = await writeMonthValue(data.month, data.section, data.category, data.day, newVal);
+        const result = data.conflictType === 'budget'
+            ? await writeBudgetValue(data.budget_field, data.budget_month, newVal)
+            : await writeMonthValue(data.month, data.section, data.category, data.day, newVal);
         clearSession(phone);
         if (result.ok) {
-            return [
-                `✅ *Saved!*`,
-                LINE,
-                `📅  ${data.month} 2026  ·  Day ${data.day}`,
-                `📂  ${data.section}  ›  ${data.category}`,
+            const loc = data.conflictType === 'budget'
+                ? [`🏦  ${data.budget_field}`, `📅  ${data.budget_month} 2026`]
+                : [`📅  ${data.month} 2026  ·  Day ${data.day}`, `📂  ${data.section}  ›  ${data.category}`];
+            return [`✅ *Saved!*`, LINE, ...loc,
                 `➕  Value: *${fmtNum(newVal)}*  _(plain number — no formula)_`,
-                ``,
-                `_Send *Gofy* to continue._`,
-            ].join('\n');
+                ``, `_Send *Gofy* to continue._`].join('\n');
         }
         return `❌ *Error:* ${result.error}\n_Send *Gofy* to try again._`;
     }
@@ -943,13 +983,22 @@ async function handleMessage(phone, text) {
         if (isBack(text)) { setState(phone, 'budget_select_field'); return screenBudgetSelectField(); }
         const month = pick(MONTHS, text);
         if (!month) return `⚠️ *Invalid.* Reply *1 – ${MONTHS.length}* or *0* to go back.`;
-        const result = await readBudgetValue(data.budget_field, month);
-        const curVal = result.error ? '?' : fmt(result.value);
+        const rawCell = await readBudgetParts(data.budget_field, month);
+        if (rawCell.parts && rawCell.parts.length > 0) {
+            setState(phone, 'conflict_menu', {
+                budget_field: data.budget_field,
+                budget_month: month,
+                existingParts: rawCell.parts,
+                existingTotal: rawCell.total,
+                conflictType: 'budget',
+            });
+            return budgetConflictMenuMsg({ budget_field: data.budget_field, budget_month: month }, rawCell.parts, rawCell.total);
+        }
         setState(phone, 'budget_enter_amount', { budget_month: month });
         return [
             `🏦 *${crumb('Budget', data.budget_field, month + ' 2026')}*`,
             LINE,
-            `Current value:  *${curVal}*`,
+            `_Cell is empty_`,
             ``,
             `Enter the new amount:`,
             `_Numbers only  •  *0* clears the cell  •  *back* to go back_`,

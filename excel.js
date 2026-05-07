@@ -198,6 +198,34 @@ async function writeBudgetValue(field, month, amount) {
     return { ok: true };
 }
 
+// ── Budget formula-aware access ───────────────────────────────────────────────
+async function readBudgetParts(field, month) {
+    if (!BUDGET_ROWS[field]) return { error: `Invalid budget field: ${field}` };
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.readFile(getExcelPath());
+    const ws = wb.getWorksheet('Budget');
+    return _parseCellParts(ws.getCell(BUDGET_ROWS[field], BUDGET_MONTH_COL[month]));
+}
+
+async function writeBudgetParts(field, month, parts, asFormula = true) {
+    if (!BUDGET_ROWS[field]) return { error: `Invalid budget field: ${field}` };
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.readFile(getExcelPath());
+    const ws = wb.getWorksheet('Budget');
+    const cell = ws.getCell(BUDGET_ROWS[field], BUDGET_MONTH_COL[month]);
+    const cleaned = parts.filter(n => typeof n === 'number' && !isNaN(n) && n > 0);
+    if (cleaned.length === 0) {
+        cell.value = null;
+    } else if (!asFormula || cleaned.length === 1) {
+        cell.value = cleaned[0];
+    } else {
+        const sum = cleaned.reduce((a, b) => a + b, 0);
+        cell.value = { formula: cleaned.join('+'), result: sum };
+    }
+    await wb.xlsx.writeFile(getExcelPath());
+    return { ok: true };
+}
+
 async function getMonthSummary(month) {
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.readFile(getExcelPath());
@@ -1244,6 +1272,7 @@ module.exports = {
     MONTHS, MONTH_DAYS, BUDGET_ROWS,
     readMonthValue, writeMonthValue,
     readMonthParts,  writeMonthParts,
+    readBudgetParts, writeBudgetParts,
     readBudgetValue, writeBudgetValue,
     getMonthSummary, getSectionTotals,
     generateMonthHtml, generateYearHtml,

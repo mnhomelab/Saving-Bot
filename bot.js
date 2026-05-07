@@ -5,7 +5,10 @@ const qrcode = require('qrcode-terminal');
 const { handleMessage } = require('./handler');
 const { startScheduler } = require('./scheduler');
 const { WHITELIST } = require('./config');
+const { getMonthSummary } = require('./excel');
 const dashboard = require('./dashboard');
+
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
 const client = new Client({
     authStrategy: new LocalAuth({ dataPath: './session' }),
@@ -15,6 +18,17 @@ const client = new Client({
         args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
     }
 });
+
+// ── Refresh dashboard month summary ──────────────────────────────────────────
+async function refreshDashboardSummary() {
+    try {
+        const month = MONTHS[new Date().getMonth()];
+        const data  = await getMonthSummary(month);
+        if (data) dashboard.setMonthSummary({ ...data, month });
+    } catch (e) {
+        console.log('⚠️  Dashboard summary refresh failed:', e.message);
+    }
+}
 
 // ── QR Code ───────────────────────────────────────────────────────────────────
 client.on('qr', (qr) => {
@@ -35,6 +49,7 @@ client.on('ready', () => {
         { label: '11:50 PM PKT', cron: '50 23 * * *' },
     ]);
     dashboard.startDashboard();
+    refreshDashboardSummary();
     console.log('✅ Saving-Bot-v0.1 is LIVE!');
     console.log(`🔒 Whitelist: ${WHITELIST.join(', ')}`);
     console.log('💬 Send "Gofy" to start\n');
@@ -66,7 +81,6 @@ async function processMessage(msg) {
     const number = await getRealNumber(msg);
 
     // Non-whitelisted: complete silence — no reply, no log
-    // Bot appears as a normal inactive number to them
     if (!WHITELIST.includes(number)) return;
 
     console.log(`📩 [${number}] ${body}`);
@@ -85,6 +99,8 @@ async function processMessage(msg) {
                 console.log(`📤 [${number}] ${reply.substring(0, 80)}`);
                 dashboard.logActivity(number, reply, 'out');
             }
+            // Refresh summary after any interaction so dashboard stays current
+            refreshDashboardSummary();
         }
     } catch (err) {
         console.error('❌ Error handling message:', err);

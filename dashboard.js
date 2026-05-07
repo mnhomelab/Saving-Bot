@@ -410,16 +410,25 @@ function render(d){
     const le=document.getElementById('s-left');
     le.textContent=N(ms.balanceHaveLeft);le.className='stat-value '+col(ms.balanceHaveLeft||0);
     document.getElementById('b-month-label').textContent=ms.month||'—';
-    document.getElementById('b-finance').innerHTML=[
-      ['Total Income',N(ms.totalIncome),'v-green'],['Total Expenses',N(ms.totalExpenses),'v-red'],
-      ['Net',(ms.net>=0?'+':'')+N(ms.net),col(ms.net||0)],
-      ['Petty Cash — Available',N(ms.pettyCashAvailable),'v-blue'],
-      ['Petty Cash — Used',N(ms.pettyCashUsed),'v-red'],
-      ['Petty Cash — Left',N(ms.pettyCashLeft),col(ms.pettyCashLeft||0)],
-      ['Budget Balance (Can Use)',N(ms.balanceCanUse),'v-green'],
-      ['Balance I Have Left',N(ms.balanceHaveLeft),col(ms.balanceHaveLeft||0)],
-      ['Difference',(diff>=0?'+':'')+N(diff),col(diff)],
-    ].map(([l,v,c])=>\`<div class="fin-row"><span class="fin-label">\${l}</span><span class="fin-val \${c}">\${v}</span></div>\`).join('');
+    const rows=[
+      ['💰 Budget Balance (Can Use)', N(ms.balanceCanUse),   'v-green'],
+      ['💳 Balance I Have Left',      N(ms.balanceHaveLeft), col(ms.balanceHaveLeft||0)],
+      ['📊 Difference',               (diff>=0?'+':'')+N(diff), col(diff)],
+      ['divider','',''],
+      ['📈 Total Income',    N(ms.totalIncome),   'v-green'],
+      ['📉 Total Expenses',  N(ms.totalExpenses), 'v-red'],
+      ['⚖️ Net',             (ms.net>=0?'+':'')+N(ms.net), col(ms.net||0)],
+      ['divider','',''],
+      ['💵 Petty Cash Available', N(ms.pettyCashAvailable), 'v-blue'],
+      ['💸 Petty Cash Used',      N(ms.pettyCashUsed),      'v-red'],
+      ['🏦 Petty Cash Left',      N(ms.pettyCashLeft),      col(ms.pettyCashLeft||0)],
+      ...(ms.startingBalance?[['🏁 Starting Balance',N(ms.startingBalance),'v-white']]:[]),
+    ];
+    document.getElementById('b-finance').innerHTML=rows.map(([l,v,c])=>
+      l==='divider'
+        ? \`<div style="border-top:1px solid rgba(255,255,255,.06);margin:4px 0"></div>\`
+        : \`<div class="fin-row"><span class="fin-label">\${l}</span><span class="fin-val \${c}">\${v}</span></div>\`
+    ).join('');
   }
   document.getElementById('b-sched-count').textContent=(d.schedules.length||0)+' jobs';
   document.getElementById('b-schedules').innerHTML=d.schedules.length

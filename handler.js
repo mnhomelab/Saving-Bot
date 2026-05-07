@@ -273,6 +273,21 @@ function formatSummary(title, d) {
     ].join('\n');
 }
 
+function screenDashboardMenu() {
+    const running = dashboard.isRunning();
+    return [
+        `📊 *Monitoring Dashboard*`,
+        DLINE,
+        `  *1*  🔗  Preview  _(get your access link)_`,
+        `  *2*  🔑  Generate Access Token  _(paste on login page)_`,
+        `  *3*  ${running ? '⏹  Stop' : '▶️  Start'} Dashboard Server`,
+        LINE,
+        `  *0*  ⬅ Back`,
+        ``,
+        `_Reply with number_`,
+    ].join('\n');
+}
+
 // ── Main handler ──────────────────────────────────────────────────────────────
 async function handleMessage(phone, text) {
     const s = getSession(phone);
@@ -421,17 +436,7 @@ async function handleMessage(phone, text) {
         }
         if (text === '9') {
             setState(phone, 'dashboard_menu');
-            return [
-                `📊 *Monitoring Dashboard*`,
-                DLINE,
-                `  *1*  🔗  Preview  _(get your access link)_`,
-                `  *2*  ▶️  Start Dashboard Server`,
-                `  *3*  ⏹  Stop Dashboard Server`,
-                LINE,
-                `  *0*  ⬅ Back`,
-                ``,
-                `_Reply with number_`,
-            ].join('\n');
+            return screenDashboardMenu();
         }
         return `⚠️ *Invalid choice.* Reply with *1 – 9*.`;
     }
@@ -835,6 +840,7 @@ async function handleMessage(phone, text) {
     // ── DASHBOARD MENU ────────────────────────────────────────────────────────
     if (state === 'dashboard_menu') {
         if (isBack(text)) { setState(phone, 'main_menu'); return screenMainMenu(phone); }
+
         if (text === '1') {
             if (!dashboard.isRunning()) dashboard.startDashboard();
             const link = dashboard.generateToken(phone);
@@ -850,20 +856,37 @@ async function handleMessage(phone, text) {
                 `_Send *Gofy* to return to menu._`,
             ].join('\n');
         }
+
         if (text === '2') {
-            const res = dashboard.startDashboard();
+            if (!dashboard.isRunning()) dashboard.startDashboard();
+            const token = dashboard.getRawToken(phone);
             clearSession(phone);
-            return res.ok
-                ? [`▶️ *Dashboard Started*`, LINE, `Send *9 → 1* to get your access link.`, ``, `_Send *Gofy* to return to menu._`].join('\n')
-                : [`⚠️ ${res.msg}`, ``, `_Send *Gofy* to return to menu._`].join('\n');
+            return [
+                `🔑 *Your Access Token*`,
+                DLINE,
+                `\`${token}\``,
+                ``,
+                `📋 Copy & paste this on the dashboard login page`,
+                `🔒 No expiry • reusable`,
+                ``,
+                `_Send *Gofy* to return to menu._`,
+            ].join('\n');
         }
+
         if (text === '3') {
-            const res = dashboard.stopDashboard();
-            clearSession(phone);
-            return res.ok
-                ? [`⏹ *Dashboard Stopped*`, LINE, `All sessions cleared.`, ``, `_Send *Gofy* to return to menu._`].join('\n')
-                : [`⚠️ ${res.msg}`, ``, `_Send *Gofy* to return to menu._`].join('\n');
+            if (dashboard.isRunning()) {
+                const res = dashboard.stopDashboard();
+                clearSession(phone);
+                return [`⏹ *Dashboard Stopped*`, LINE, `All sessions cleared.`, ``, `_Send *Gofy* to return to menu._`].join('\n');
+            } else {
+                const res = dashboard.startDashboard();
+                clearSession(phone);
+                return res.ok
+                    ? [`▶️ *Dashboard Started*`, LINE, `Send *9 → 1* to get your access link.`, ``, `_Send *Gofy* to return to menu._`].join('\n')
+                    : [`⚠️ ${res.msg}`, ``, `_Send *Gofy* to return to menu._`].join('\n');
+            }
         }
+
         return `⚠️ *Invalid.* Reply *1*, *2*, *3*, or *0* to go back.`;
     }
 

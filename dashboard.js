@@ -448,7 +448,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
         </button>
       </div>
     </div>
-    <div id="rpt-host" style="width:100%;min-height:80vh;background:#fff;border-radius:0 0 14px 14px;overflow:auto"></div>
+    <div id="rpt-host" style="width:100%;min-height:80vh;background:var(--surface);border-radius:0 0 14px 14px;overflow:auto"></div>
   </div>
   <div class="block">
     <div class="block-head"><span class="block-title">💬 Live Activity Log</span><span class="block-badge" id="b-log-count">—</span></div>
@@ -573,8 +573,12 @@ function isDark(){return document.documentElement.getAttribute('data-theme')!=='
 function applyReportTheme(){
   const host=document.getElementById('rpt-host');
   if(!host)return;
+  // Must be appended LAST so it wins the cascade over report's own styles
   let el=host.querySelector('#rpt-theme-override');
-  if(!el){el=document.createElement('style');el.id='rpt-theme-override';host.insertBefore(el,host.firstChild);}
+  if(el)el.remove();
+  el=document.createElement('style');
+  el.id='rpt-theme-override';
+  host.appendChild(el);
   el.textContent=isDark()?REPORT_DARK_CSS:'';
 }
 

@@ -5,6 +5,10 @@ const fs            = require('fs');
 const path          = require('path');
 const { MessageMedia } = require('whatsapp-web.js');
 const { NOTIFY_NUMBERS, YEAR_FOLDER } = require('./config');
+const mailer = require('./mailer');
+const { getDayReport } = require('./excel');
+
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
 // ── Scheduled times (PKT = Asia/Karachi = UTC+5) ─────────────────────────────
 const SCHEDULES = [
@@ -54,6 +58,20 @@ async function sendDailyFiles(client) {
     }
 }
 
+// ── Day-end email report ─────────────────────────────────────────────────────
+async function sendDayEndEmailReport() {
+    try {
+        const now   = new Date();
+        const month = MONTHS[now.getMonth()];
+        const day   = now.getDate();
+        console.log(`📧 Day-end report: generating for ${month} day ${day}...`);
+        const report = await getDayReport(month, day);
+        await mailer.sendDayEndReport(report);
+    } catch (err) {
+        console.error('📧 Day-end report error:', err.message);
+    }
+}
+
 function startScheduler(client) {
     for (const { cron: expr, label } of SCHEDULES) {
         cron.schedule(expr, () => {
@@ -61,6 +79,10 @@ function startScheduler(client) {
             sendDailyFiles(client).catch(err =>
                 console.error('⏰ Scheduler error:', err.message)
             );
+            // Send day-end email report on the last schedule of the day (11:50 PM)
+            if (expr === '50 23 * * *') {
+                sendDayEndEmailReport();
+            }
         }, { timezone: 'Asia/Karachi' });
 
         console.log(`⏰ Scheduled: ${label} PKT (${expr})`);

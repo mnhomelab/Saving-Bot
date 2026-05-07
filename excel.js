@@ -1268,11 +1268,53 @@ async function writeStartingBalance(amount) {
     return { ok: true };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// DAY REPORT — All spending/income for a single day
+// ─────────────────────────────────────────────────────────────────────────────
+async function getDayReport(month, day) {
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.readFile(getExcelPath());
+    const ws = wb.getWorksheet(month);
+    if (!ws) return { hasData: false, error: `Worksheet ${month} not found` };
+
+    const col = getDayCol(month, day);
+    if (!col) return { hasData: false, error: `Day ${day} invalid for ${month}` };
+
+    const sections = {};
+    let pettyCashTotal = 0, bankTotal = 0, incomeTotal = 0;
+
+    for (const [key, row] of Object.entries(ROW_MAP)) {
+        const [section, category] = key.split('|');
+        const cellData = _parseCellParts(ws.getCell(row, col));
+        if (!cellData.parts || cellData.parts.length === 0) continue;
+        const value = cellData.total != null ? cellData.total : cellData.parts.reduce((a, b) => a + b, 0);
+        if (!value || value === 0) continue;
+
+        if (!sections[section]) sections[section] = { items: [], total: 0 };
+        sections[section].items.push({ category, value, parts: cellData.parts, hasFormula: cellData.hasFormula });
+        sections[section].total += value;
+
+        if (section === 'INCOME')           incomeTotal    += value;
+        else if (section === 'Petty Cash Used') pettyCashTotal += value;
+        else                                bankTotal      += value;
+    }
+
+    const grandExpenses = pettyCashTotal + bankTotal;
+    return {
+        month, day,
+        date: `${String(day).padStart(2, '0')} ${month} 2026`,
+        sections: Object.entries(sections).map(([name, d]) => ({ name, ...d })),
+        pettyCashTotal, bankTotal, incomeTotal, grandExpenses,
+        hasData: grandExpenses > 0 || incomeTotal > 0,
+    };
+}
+
 module.exports = {
     MONTHS, MONTH_DAYS, BUDGET_ROWS,
     readMonthValue, writeMonthValue,
     readMonthParts,  writeMonthParts,
     readBudgetParts, writeBudgetParts,
+    getDayReport,
     readBudgetValue, writeBudgetValue,
     getMonthSummary, getSectionTotals,
     generateMonthHtml, generateYearHtml,

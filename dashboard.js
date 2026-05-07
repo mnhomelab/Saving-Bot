@@ -503,8 +503,8 @@ function showToast(msg){
   requestAnimationFrame(()=>{t.style.opacity='1';setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400)},3000)});
 }
 
-// Embed report into Shadow DOM — isolated styles, part of the page, no iframe flash
-let reportLoading=false, rptShadow=null;
+// Embed report directly into page DOM and re-execute its scripts so tabs work
+let reportLoading=false;
 async function loadReport(manual=false){
   if(reportLoading)return;
   reportLoading=true;
@@ -513,12 +513,36 @@ async function loadReport(manual=false){
   try{
     const html=await fetch('/report?t='+Date.now()).then(r=>r.text());
     const host=document.getElementById('rpt-host');
-    if(!rptShadow) rptShadow=host.attachShadow({mode:'open'});
-    rptShadow.innerHTML=html;
+    const parser=new DOMParser();
+    const doc=parser.parseFromString(html,'text/html');
+
+    // Clear previous content
+    host.innerHTML='';
+
+    // Inject scoped styles
+    doc.querySelectorAll('style').forEach(s=>{
+      const el=document.createElement('style');
+      el.textContent=s.textContent;
+      host.appendChild(el);
+    });
+
+    // Inject body content
+    const wrap=document.createElement('div');
+    wrap.innerHTML=doc.body.innerHTML;
+    host.appendChild(wrap);
+
+    // Re-execute scripts so tab handlers and all JS work
+    doc.querySelectorAll('script').forEach(old=>{
+      const s=document.createElement('script');
+      s.textContent=old.textContent;
+      host.appendChild(s);
+    });
+
     if(status)status.textContent='Live ●';
     if(manual)showToast('📊 Report refreshed');
   }catch(e){
     if(status)status.textContent='Error';
+    console.error('Report load error:',e);
   }finally{
     reportLoading=false;
   }

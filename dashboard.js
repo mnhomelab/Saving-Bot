@@ -79,6 +79,7 @@ function setSchedules(schedules) {
 
 function setMonthSummary(summary) {
     state.monthSummary = summary;
+    state.dataVersion = (state.dataVersion || 0) + 1;
     broadcast();
 }
 
@@ -145,6 +146,7 @@ function snapshot() {
         activityLog:  state.activityLog,
         monthSummary: state.monthSummary,
         activeUsers:  sessions.size,
+        dataVersion:  state.dataVersion || 0,
         timestamp:    new Date().toISOString(),
     };
 }
@@ -221,6 +223,17 @@ app.get('/events', requireSession, (req, res) => {
 
 // Polling fallback (protected)
 app.get('/api/data', requireSession, (_, res) => res.json(snapshot()));
+
+// Live year report (protected) — same output as Export HTML Report → Year Overview
+app.get('/report', requireSession, async (_, res) => {
+    try {
+        const { generateYearHtml } = require('./excel');
+        const html = await generateYearHtml();
+        res.send(html);
+    } catch (err) {
+        res.status(500).send(`<pre style="color:red">Report error: ${err.message}</pre>`);
+    }
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HTML — LOGIN PAGE
@@ -334,8 +347,10 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 .block-badge{font-size:10px;color:var(--muted);background:var(--surface2);border-radius:6px;padding:2px 8px}
 .block-body{padding:14px 16px}
 .fin-row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)}
-.fin-row:last-child{border:none}
+.fin-row.fin-last{border:none}
 .fin-label{color:var(--muted)}.fin-val{font-weight:500}
+.fin-section-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--accent);padding:10px 0 4px;margin-top:4px}
+.fin-divider{border-top:1px solid rgba(255,255,255,.04);margin:6px 0}
 .sched-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)}
 .sched-row:last-child{border:none}
 .sched-cron{font-size:11px;color:var(--accent);background:rgba(15,118,110,.1);border-radius:6px;padding:2px 8px}
@@ -380,8 +395,26 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
     <div class="block-body"><div class="chips" id="b-whitelist"></div></div>
   </div>
   <div class="block">
-    <div class="block-head"><span class="block-title">💰 Current Month Summary</span><span class="block-badge" id="b-month-label">—</span></div>
-    <div class="block-body" id="b-finance"><div class="empty">Loading…</div></div>
+    <div class="block-head">
+      <span class="block-title">💰 Current Month Summary</span>
+      <span class="block-badge" id="b-month-label">—</span>
+    </div>
+    <div class="block-body">
+      <div class="fin-section-title">⚖️ Balance</div>
+      <div class="fin-row"><span class="fin-label">💰 Budget Balance (Can Use)</span><span class="fin-val v-green" id="f-canUse">—</span></div>
+      <div class="fin-row"><span class="fin-label">💳 Balance I Have Left</span><span class="fin-val" id="f-haveLeft">—</span></div>
+      <div class="fin-row"><span class="fin-label">📊 Difference</span><span class="fin-val" id="f-diff">—</span></div>
+      <div class="fin-divider"></div>
+      <div class="fin-section-title">🏦 Bank</div>
+      <div class="fin-row"><span class="fin-label">📈 Total Income</span><span class="fin-val v-green" id="f-income">—</span></div>
+      <div class="fin-row"><span class="fin-label">📉 Total Expenses</span><span class="fin-val v-red" id="f-expenses">—</span></div>
+      <div class="fin-row"><span class="fin-label">⚖️ Net</span><span class="fin-val" id="f-net">—</span></div>
+      <div class="fin-divider"></div>
+      <div class="fin-section-title">💵 Petty Cash</div>
+      <div class="fin-row"><span class="fin-label">Available</span><span class="fin-val v-blue" id="f-pcAvail">—</span></div>
+      <div class="fin-row"><span class="fin-label">Used</span><span class="fin-val v-red" id="f-pcUsed">—</span></div>
+      <div class="fin-row fin-last"><span class="fin-label">Left</span><span class="fin-val" id="f-pcLeft">—</span></div>
+    </div>
   </div>
   <div class="block">
     <div class="block-head"><span class="block-title">💬 Live Activity Log</span><span class="block-badge" id="b-log-count">—</span></div>
@@ -406,29 +439,29 @@ function render(d){
   const ms=d.monthSummary;
   if(ms){
     const diff=(ms.balanceHaveLeft||0)-(ms.balanceCanUse||0);
+    // Top stat cards
     document.getElementById('s-budget').textContent=N(ms.balanceCanUse);
     const le=document.getElementById('s-left');
-    le.textContent=N(ms.balanceHaveLeft);le.className='stat-value '+col(ms.balanceHaveLeft||0);
+    le.textContent=N(ms.balanceHaveLeft);
+    le.className='stat-value '+col(ms.balanceHaveLeft||0);
+    // Month label
     document.getElementById('b-month-label').textContent=ms.month||'—';
-    const rows=[
-      ['💰 Budget Balance (Can Use)', N(ms.balanceCanUse),   'v-green'],
-      ['💳 Balance I Have Left',      N(ms.balanceHaveLeft), col(ms.balanceHaveLeft||0)],
-      ['📊 Difference',               (diff>=0?'+':'')+N(diff), col(diff)],
-      ['divider','',''],
-      ['📈 Total Income',    N(ms.totalIncome),   'v-green'],
-      ['📉 Total Expenses',  N(ms.totalExpenses), 'v-red'],
-      ['⚖️ Net',             (ms.net>=0?'+':'')+N(ms.net), col(ms.net||0)],
-      ['divider','',''],
-      ['💵 Petty Cash Available', N(ms.pettyCashAvailable), 'v-blue'],
-      ['💸 Petty Cash Used',      N(ms.pettyCashUsed),      'v-red'],
-      ['🏦 Petty Cash Left',      N(ms.pettyCashLeft),      col(ms.pettyCashLeft||0)],
-      ...(ms.startingBalance?[['🏁 Starting Balance',N(ms.startingBalance),'v-white']]:[]),
-    ];
-    document.getElementById('b-finance').innerHTML=rows.map(([l,v,c])=>
-      l==='divider'
-        ? \`<div style="border-top:1px solid rgba(255,255,255,.06);margin:4px 0"></div>\`
-        : \`<div class="fin-row"><span class="fin-label">\${l}</span><span class="fin-val \${c}">\${v}</span></div>\`
-    ).join('');
+    // Balance section — individual targeted updates
+    document.getElementById('f-canUse').textContent   = N(ms.balanceCanUse);
+    const hl=document.getElementById('f-haveLeft');
+    hl.textContent=N(ms.balanceHaveLeft); hl.className='fin-val '+col(ms.balanceHaveLeft||0);
+    const df=document.getElementById('f-diff');
+    df.textContent=(diff>=0?'+':'')+N(diff); df.className='fin-val '+col(diff);
+    // Bank section
+    document.getElementById('f-income').textContent   = N(ms.totalIncome);
+    document.getElementById('f-expenses').textContent = N(ms.totalExpenses);
+    const nt=document.getElementById('f-net');
+    nt.textContent=(ms.net>=0?'+':'')+N(ms.net); nt.className='fin-val '+col(ms.net||0);
+    // Petty cash section
+    document.getElementById('f-pcAvail').textContent = N(ms.pettyCashAvailable);
+    document.getElementById('f-pcUsed').textContent  = N(ms.pettyCashUsed);
+    const pl=document.getElementById('f-pcLeft');
+    pl.textContent=N(ms.pettyCashLeft); pl.className='fin-val '+col(ms.pettyCashLeft||0);
   }
   document.getElementById('b-sched-count').textContent=(d.schedules.length||0)+' jobs';
   document.getElementById('b-schedules').innerHTML=d.schedules.length
@@ -447,8 +480,21 @@ function render(d){
     :'<div class="empty">Waiting for messages…</div>';
   document.getElementById('last-upd').textContent=new Date().toLocaleTimeString('en-PK');
 }
+function showToast(msg){
+  const t=document.createElement('div');
+  t.textContent=msg;
+  t.style.cssText='position:fixed;bottom:24px;right:24px;background:#0f766e;color:white;padding:10px 18px;border-radius:10px;font-size:13px;z-index:999;opacity:0;transition:opacity .3s;font-family:inherit';
+  document.body.appendChild(t);
+  requestAnimationFrame(()=>{t.style.opacity='1';setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400)},3000)});
+}
 const es=new EventSource('/events');
-es.onmessage=e=>{try{render(JSON.parse(e.data))}catch(_){}};
+let lastDataVersion=null;
+es.onmessage=e=>{try{
+  const d=JSON.parse(e.data);
+  render(d);
+  if(lastDataVersion!==null&&d.dataVersion!==lastDataVersion) showToast('💰 Data updated');
+  lastDataVersion=d.dataVersion;
+}catch(_){}};
 es.onerror=()=>{document.getElementById('uptime-sub').textContent='Reconnecting…'};
 setInterval(()=>fetch('/api/data').then(r=>r.json()).then(render).catch(()=>{}),30_000);
 </script></body></html>`;

@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const { TEMPLATE_PATH } = require('./config');
 const dashboard = require('./dashboard');
+const mailer    = require('./mailer');
 const { getActiveYear, setActiveYear, getExcelPath, isSchedulerStopped, stopSchedulerForNumber, startSchedulerForNumber } = require('./config');
 const {
     MONTHS, MONTH_DAYS, BUDGET_ROWS,
@@ -900,7 +901,6 @@ async function handleMessage(phone, text) {
             const result = await writeMonthValue(data.month, data.section, data.category, data.day, data.amount);
             clearSession(phone);
             if (result.ok) {
-                mailer.alertDataChange('added', { phone, month: data.month, section: data.section, category: data.category, day: data.day, oldValue: null, newValue: fmtNum(data.amount) }).catch(() => {});
                 return [
                     `✅ *Saved!*`,
                     LINE,
@@ -966,7 +966,6 @@ async function handleMessage(phone, text) {
             const result = await writeStartingBalance(data.sb_amount);
             clearSession(phone);
             if (result.ok) {
-                mailer.alertBudgetChange('added', { phone, budget_field: 'Starting Balance', budget_month: 'Year', oldValue: null, newValue: fmtNum(data.sb_amount) }).catch(() => {});
                 return [
                     `✅ *Starting Balance Updated!*`,
                     LINE,
@@ -1041,7 +1040,6 @@ async function handleMessage(phone, text) {
             const result = await writeBudgetValue(data.budget_field, data.budget_month, data.budget_amount);
             clearSession(phone);
             if (result.ok) {
-                mailer.alertBudgetChange('added', { phone, budget_field: data.budget_field, budget_month: data.budget_month, oldValue: null, newValue: fmtNum(data.budget_amount) }).catch(() => {});
                 return [
                     `✅ *Budget Updated!*`,
                     LINE,

@@ -224,9 +224,10 @@ function beforeAfterBlock(beforeParts, beforeTotal, afterParts, afterTotal, acce
 function changeDetailBlock(action, details, color) {
     const d = details;
     if (action === 'added') {
+        const val = d.after?.total ?? d.newValue ?? 0;
         return `<div style="margin:0 32px 16px;background:#0a1a2e;border:1px solid ${color}33;border-left:3px solid ${color};border-radius:0 8px 8px 0;padding:12px 16px">
           <div style="font-size:10px;color:${color};font-weight:700;letter-spacing:1px;margin-bottom:6px">NEW ENTRY</div>
-          <div style="font-size:22px;font-weight:800;color:${color}">PKR ${N(d.newValue)}</div>
+          <div style="font-size:22px;font-weight:800;color:${color}">PKR ${N(val)}</div>
           <div style="font-size:11px;color:#4b5563;margin-top:4px">First value recorded for this cell</div>
         </div>`;
     }
@@ -260,12 +261,14 @@ function changeDetailBlock(action, details, color) {
         </div>`;
     }
     if (action === 'replaced') {
+        const oldV = d.before?.total ?? d.oldValue ?? 0;
+        const newV = d.after?.total  ?? d.newValue ?? 0;
         return `<div style="margin:0 32px 16px;background:#140a1a;border:1px solid #c084fc33;border-left:3px solid #c084fc;border-radius:0 8px 8px 0;padding:12px 16px">
           <div style="font-size:10px;color:#c084fc;font-weight:700;letter-spacing:1px;margin-bottom:8px">FULL REPLACEMENT</div>
           <div style="font-size:14px;font-weight:600">
-            <span style="color:#f87171;text-decoration:line-through">PKR ${N(d.oldValue)}</span>
+            <span style="color:#f87171;text-decoration:line-through">PKR ${N(oldV)}</span>
             <span style="color:#4b5563;padding:0 8px">→</span>
-            <span style="color:#c084fc;font-size:20px">PKR ${N(d.newValue)}</span>
+            <span style="color:#c084fc;font-size:20px">PKR ${N(newV)}</span>
           </div>
           <div style="font-size:11px;color:#4b5563;margin-top:4px">Entire formula replaced with single value</div>
         </div>`;

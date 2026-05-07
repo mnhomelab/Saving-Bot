@@ -4,6 +4,8 @@ services:
     container_name: saving-bot-v0.1
     restart: unless-stopped
     working_dir: /app
+    ports:
+      - "3001:3001"                     # Dashboard port
     volumes:
       - .:/app                          # bot source code + session
       - ./Saving-Year:/app/Saving-Year  # explicit separate mount — survives any container ops

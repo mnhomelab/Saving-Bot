@@ -5,7 +5,7 @@ const qrcode = require('qrcode-terminal');
 const { handleMessage } = require('./handler');
 const { startScheduler } = require('./scheduler');
 const { WHITELIST } = require('./config');
-const { getMonthSummary } = require('./excel');
+const { getMonthReport } = require('./excel');
 const dashboard = require('./dashboard');
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -23,8 +23,13 @@ const client = new Client({
 async function refreshDashboardSummary() {
     try {
         const month = MONTHS[new Date().getMonth()];
-        const data  = await getMonthSummary(month);
-        if (data) dashboard.setMonthSummary({ ...data, month });
+        const data  = await getMonthReport(month);
+        if (data) {
+            console.log(`📊 Dashboard summary [${month}]: income=${data.totalIncome} expenses=${data.totalExpenses} canUse=${data.balanceCanUse}`);
+            dashboard.setMonthSummary({ ...data, month });
+        } else {
+            console.log('⚠️  Dashboard summary: getMonthReport returned null');
+        }
     } catch (e) {
         console.log('⚠️  Dashboard summary refresh failed:', e.message);
     }

@@ -52,6 +52,8 @@ const state = {
 // ─────────────────────────────────────────────────────────────────────────────
 const tokenToNumber = new Map();   // token  → number
 const numberToToken = new Map();   // number → token
+const shortToToken  = new Map();   // code   → token
+const shortUrlCache = new Map();   // code   → is.gd short URL
 
 // Sessions — long-lived (30 days)
 const sessions   = new Map();      // sessionId → { number, created }
@@ -105,8 +107,14 @@ function generateToken(number) {
         tokenToNumber.set(token, number);
         numberToToken.set(number, token);
     }
+    // Create/reuse a short code for this token
+    let code = [...shortToToken.entries()].find(([,t]) => t === token)?.[0];
+    if (!code) {
+        code = crypto.randomBytes(4).toString('hex'); // 8-char hex e.g. "a3f9c12b"
+        shortToToken.set(code, token);
+    }
     const host = getHost();
-    return `${host}/auth?token=${token}`;
+    return `${host}/go/${code}`;
 }
 
 /** Also expose the raw token (for showing in WhatsApp without full URL) */
@@ -118,8 +126,42 @@ function getRawToken(number) {
 /** Revoke a number's token (e.g. removed from whitelist) */
 function revokeToken(number) {
     const token = numberToToken.get(number);
-    if (token) tokenToNumber.delete(token);
+    if (token) {
+        tokenToNumber.delete(token);
+        // Remove associated short code
+        for (const [code, t] of shortToToken) {
+            if (t === token) { shortToToken.delete(code); break; }
+        }
+    }
     numberToToken.delete(number);
+}
+
+/**
+ * Returns a human-friendly short URL (via is.gd) for the number's dashboard link.
+ * Result is cached — is.gd is only called once per code.
+ * Falls back to the /go/:code URL if the service is unavailable.
+ */
+async function generateShortLink(number) {
+    // Ensure token + short code exist
+    const longUrl = generateToken(number);           // e.g. http://65.x.x.x:3001/go/a3f9c12b
+    const code    = [...shortToToken.entries()].find(([,t]) => t === numberToToken.get(number))?.[0];
+
+    if (code && shortUrlCache.has(code)) return shortUrlCache.get(code);
+
+    try {
+        const target = encodeURIComponent(longUrl);
+        const apiUrl = `https://is.gd/create.php?format=simple&url=${target}`;
+        const resp   = await fetch(apiUrl, { signal: AbortSignal.timeout(5000) });
+        if (resp.ok) {
+            const short = (await resp.text()).trim();
+            if (short.startsWith('http')) {
+                if (code) shortUrlCache.set(code, short);
+                return short;
+            }
+        }
+    } catch { /* network error or timeout — fall back silently */ }
+
+    return longUrl; // fallback: still works, just shows IP
 }
 
 function isRunning() { return !!server; }
@@ -183,6 +225,17 @@ function requireSession(req, res, next) {
 // ─────────────────────────────────────────────────────────────────────────────
 // ROUTES
 // ─────────────────────────────────────────────────────────────────────────────
+
+// GET /go/:code  — short link, resolves to full token then logs in
+app.get('/go/:code', (req, res) => {
+    const token = shortToToken.get(req.params.code || '');
+    if (!token) return res.redirect('/login?error=invalid');
+    const number = validateToken(token);
+    if (!number) return res.redirect('/login?error=invalid');
+    const sid = createSession(number);
+    res.setHeader('Set-Cookie', `dsid=${sid}; HttpOnly; Path=/; Max-Age=${30 * 24 * 3600}`);
+    res.redirect('/');
+});
 
 // GET /auth?token=xxx  — link from WhatsApp, auto-login
 app.get('/auth', (req, res) => {
@@ -705,7 +758,7 @@ function stopDashboard() {
 
 module.exports = {
     startDashboard, stopDashboard, isRunning,
-    generateToken,  getRawToken,   revokeToken,
+    generateToken,  generateShortLink, getRawToken, revokeToken,
     setBotOnline,   setWhitelist,  setSchedules,
     setMonthSummary, logActivity,
 };

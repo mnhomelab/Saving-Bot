@@ -843,7 +843,7 @@ async function handleMessage(phone, text) {
 
         if (text === '1') {
             if (!dashboard.isRunning()) dashboard.startDashboard();
-            const link = dashboard.generateToken(phone);
+            const link = await dashboard.generateShortLink(phone);
             clearSession(phone);
             return [
                 `🔗 *Your Dashboard Link*`,

@@ -189,11 +189,8 @@ async function loadMonthData(month, wb) {
     const col = BUDGET_MONTH_COL[month];
 
     const startingBalance    = getCellValue(budgetWs.getCell(3, 1))    || 0; // Year-start balance
-    // Row 8  — "Balance I Can Used (Bank)":  planned/available bank amount per month
+    // Row 8  — "Balance I Can Used (Bank)": planned/available bank amount per month
     const balanceCanUse      = getCellValue(budgetWs.getCell(8, col))  || 0;
-    // Row 19 — "Balance I Have Left (Bank)": read directly from Budget sheet (e.g. F19 for May)
-    //           This is the authoritative figure — NOT computed from income/expenses.
-    const balanceHaveLeft    = getCellValue(budgetWs.getCell(19, col)) || 0;
     const pettyCashAvailable = getCellValue(budgetWs.getCell(11, col)) || 0; // Monthly petty cash allocation
 
     const ws = wb.getWorksheet(month);
@@ -245,10 +242,19 @@ async function loadMonthData(month, wb) {
     }
     const net = totalIncome - totalExpenses;
 
+    // ── Balance I Have Left (Bank) ────────────────────────────────────────────
+    // May 2026: balanceCanUse - (totalExpenses - 132219)
+    //           i.e. 132,219 is excluded from the expense side for May only.
+    // All other months: balanceCanUse - totalExpenses
+    const MAY_ADJUSTMENT = 132219;
+    const balanceHaveLeft = month === 'May'
+        ? balanceCanUse - (totalExpenses - MAY_ADJUSTMENT)
+        : balanceCanUse - totalExpenses;
+
     return {
         startingBalance,
-        balanceCanUse,          // Budget row 8  — "Balance I Can Used (Bank)"
-        balanceHaveLeft,        // Budget row 19 — "Balance I Have Left (Bank)" (e.g. F19 for May)
+        balanceCanUse,          // Budget row 8 — "Balance I Can Used (Bank)"
+        balanceHaveLeft,        // Computed: canUse - expenses (May: expenses adjusted by -132,219)
         pettyCashAvailable, pettyCashUsed, pettyCashLeft,
         totalIncome, totalExpenses, net,
         sectionData,
@@ -262,8 +268,9 @@ async function loadMonthData(month, wb) {
 // RUNNING BALANCES
 // balanceBank      = cumulative (startingBalance + all net to date) — internal reference
 // balancePettyBank = balanceBank + pettyCashLeft
-// balanceHaveLeft  = read from Budget sheet row 19 in loadMonthData (e.g. F19 for May)
-//                    This is the authoritative figure — NOT overwritten here.
+// balanceHaveLeft  = computed in loadMonthData — do NOT overwrite here
+//   May:    balanceCanUse - (totalExpenses - 132219)
+//   Others: balanceCanUse - totalExpenses
 // ─────────────────────────────────────────────────────────────────────────────
 function computeRunningBalances(allData, startingBalance) {
     let runningBank = startingBalance;
@@ -272,7 +279,7 @@ function computeRunningBalances(allData, startingBalance) {
         if (!d) continue;
         runningBank          = runningBank + d.net;
         d.balanceBank        = runningBank;
-        // d.balanceHaveLeft is already set from Budget sheet row 19 — do NOT overwrite
+        // d.balanceHaveLeft already computed by loadMonthData — do NOT overwrite
         d.balancePettyBank   = runningBank + d.pettyCashLeft;
     }
 }
@@ -299,19 +306,19 @@ function statusPill(canUse, haveLeft) {
 //   • Balance I Can Used (Bank)  — from Budget sheet row 8
 //   • Balance I Have Left (Bank) — computed running balance (balanceBank)
 // ─────────────────────────────────────────────────────────────────────────────
-function summaryCardsHtml(d) {
+function summaryCardsHtml(d, opts = {}) {
     const row = (label, value, color, bold) =>
         `<div class="sum-row">
             <span class="sum-label">${label}</span>
             <span class="sum-value" style="color:${color};${bold?'font-size:16px;':''}">${value}</span>
          </div>`;
 
-    // ── BANK BALANCE CARD (the two key metrics — always shown first) ──────────
+    // ── BANK BALANCE CARD — hidden in year totals container (hideBankBalance: true)
     const canUseVal   = d.balanceCanUse  || 0;
     const haveLeftVal = d.balanceHaveLeft !== undefined ? d.balanceHaveLeft : (d.balanceBank || 0);
     const diff        = haveLeftVal - canUseVal;
 
-    const bankBalanceCard = `
+    const bankBalanceCard = opts.hideBankBalance ? '' : `
         <div class="sum-box sum-box-featured">
             <div class="sum-box-title" style="border-color:#0f766e;color:#0f766e">
                 🏦 Bank Balance
@@ -965,7 +972,7 @@ function showMainTab_${m}(id, btn) {
         totalExpenses:    yrExpenses,
         net:              yrNet,
         startingBalance,
-    });
+    }, { hideBankBalance: true }); // Bank Balance card excluded from year totals — shown per-month instead
 
     return `<!DOCTYPE html><html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">

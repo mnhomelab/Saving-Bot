@@ -120,6 +120,64 @@ async function writeMonthValue(month, section, category, day, amount) {
     return { ok: true };
 }
 
+// ── Formula-aware cell access ─────────────────────────────────────────────────
+// Parses a cell into its additive parts so we can append/delete/change parts.
+// Returns { parts: [1000, 500], hasFormula: true, total: 1500 }
+// or       { parts: [1000],    hasFormula: false, total: 1000 } for plain numbers
+// or       { parts: [],        hasFormula: false, total: null }  for empty cells
+function _parseCellParts(cell) {
+    if (!cell || cell.value === null || cell.value === undefined)
+        return { parts: [], hasFormula: false, total: null };
+    const v = cell.value;
+    if (typeof v === 'object' && v !== null && 'formula' in v) {
+        const fStr = (v.formula || '').replace(/\s/g, '');
+        const parts = fStr.split('+').map(p => parseFloat(p)).filter(n => !isNaN(n) && n > 0);
+        return { parts, hasFormula: true, total: typeof v.result === 'number' ? v.result : null };
+    }
+    if (typeof v === 'number' && v !== 0) {
+        return { parts: [v], hasFormula: false, total: v };
+    }
+    return { parts: [], hasFormula: false, total: null };
+}
+
+// Read existing cell value as formula parts (for conflict resolution)
+async function readMonthParts(month, section, category, day) {
+    const row = ROW_MAP[`${section}|${category}`];
+    if (!row) return { error: `No mapping for ${section} / ${category}` };
+    const col = getDayCol(month, day);
+    if (!col) return { error: `Day ${day} invalid for ${month}` };
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.readFile(getExcelPath());
+    const ws = wb.getWorksheet(month);
+    return _parseCellParts(ws.getCell(row, col));
+}
+
+// Write an array of numeric parts as a formula or plain value.
+// asFormula=true  → { formula: '1000+500', result: 1500 }  (2+ parts)
+// asFormula=false → 1500  (plain numeric, sum of parts)
+// Single part always writes as plain number regardless of asFormula.
+async function writeMonthParts(month, section, category, day, parts, asFormula = true) {
+    const row = ROW_MAP[`${section}|${category}`];
+    if (!row) return { error: `No mapping for ${section} / ${category}` };
+    const col = getDayCol(month, day);
+    if (!col) return { error: `Day ${day} invalid for ${month}` };
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.readFile(getExcelPath());
+    const ws = wb.getWorksheet(month);
+    const cell = ws.getCell(row, col);
+    const cleaned = parts.filter(n => typeof n === 'number' && !isNaN(n) && n > 0);
+    if (cleaned.length === 0) {
+        cell.value = null;
+    } else if (!asFormula || cleaned.length === 1) {
+        cell.value = cleaned[0];                             // plain number (or single-part formula → scalar)
+    } else {
+        const sum = cleaned.reduce((a, b) => a + b, 0);
+        cell.value = { formula: cleaned.join('+'), result: sum };
+    }
+    await wb.xlsx.writeFile(getExcelPath());
+    return { ok: true };
+}
+
 async function readBudgetValue(field, month) {
     if (!BUDGET_ROWS[field]) return { error: `Invalid budget field: ${field}` };
     const wb = new ExcelJS.Workbook();
@@ -362,7 +420,7 @@ function summaryCardsHtml(d, opts = {}) {
             color: '#1e3a5f',
             rows: [
                 ...(d.startingBalance !== undefined ? [row('Initial Balance', N(d.startingBalance), '#64748b')] : []),
-                row('Bank',         N(d.balanceBank),       '#1e3a5f'),
+                row('Bank',         N(d.balanceBank),       col(d.balanceBank)),
                 row('Petty + Bank', N(d.balancePettyBank),  col(d.balancePettyBank)),
             ]
         },
@@ -1185,6 +1243,7 @@ async function writeStartingBalance(amount) {
 module.exports = {
     MONTHS, MONTH_DAYS, BUDGET_ROWS,
     readMonthValue, writeMonthValue,
+    readMonthParts,  writeMonthParts,
     readBudgetValue, writeBudgetValue,
     getMonthSummary, getSectionTotals,
     generateMonthHtml, generateYearHtml,

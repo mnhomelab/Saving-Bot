@@ -8,6 +8,7 @@ const { getActiveYear, setActiveYear, getExcelPath, isSchedulerStopped, stopSche
 const {
     MONTHS, MONTH_DAYS, BUDGET_ROWS,
     readMonthValue, writeMonthValue,
+    readMonthParts,  writeMonthParts,
     readBudgetValue, writeBudgetValue,
     getMonthSummary, getSectionTotals,
     generateMonthHtml, generateYearHtml,
@@ -57,6 +58,48 @@ function clearSession(phone) {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const LINE  = '───────────────────';
 const DLINE = '═══════════════════';
+// ── Conflict resolution helpers ────────────────────────────────────────────────
+function fmtParts(parts) {
+    return parts.map((v, i) => `  *${i + 1}.*  ${fmtNum(v)}`).join('\n');
+}
+
+function conflictMenuMsg(data, day, parts, total) {
+    return [
+        `⚠️ *Value Exists — Day ${day}*`,
+        DLINE,
+        `📂  ${data.section}`,
+        `🏷️  ${data.category}`,
+        `📆  ${data.month} 2026  ·  Day ${day}`,
+        LINE,
+        `Current formula parts:`,
+        fmtParts(parts),
+        `  _Total: *${fmtNum(total)}*_`,
+        LINE,
+        `What would you like to do?`,
+        `*1* 📎 *Append*  — add a new value to the formula`,
+        `*2* 🗑 *Delete*  — remove one part from the formula`,
+        `*3* ✏️ *Change*  — change one part's value`,
+        `*4* 🔄 *Replace* — replace entirely with a new value`,
+        `*5* ➕ *Add*     — overwrite with a single plain value`,
+        `*0* ⬅ Cancel`,
+    ].join('\n');
+}
+
+function partsListMsg(data, day, parts, action) {
+    return [
+        `${action === 'delete' ? '🗑' : '✏️'} *${action === 'delete' ? 'Delete' : 'Change'} a Part*`,
+        DLINE,
+        `📂  ${data.section}  ›  ${data.category}`,
+        `📆  Day ${day}  ·  ${data.month} 2026`,
+        LINE,
+        `Choose which part to ${action}:`,
+        fmtParts(parts),
+        ``,
+        `*0* ⬅ Back`,
+    ].join('\n');
+}
+
+
 
 function isBack(text) {
     return text === '0' || text.toLowerCase() === 'back';
@@ -545,21 +588,243 @@ async function handleMessage(phone, text) {
         const day = parseInt(text, 10);
         const maxDay = MONTH_DAYS[data.month];
         if (isNaN(day) || day < 1 || day > maxDay) return `⚠️ *Invalid day.* Enter *1 – ${maxDay}* or *0* to go back.`;
-        const result = await readMonthValue(data.month, data.section, data.category, day);
-        const curVal = result.error ? '?' : fmt(result.value);
+        const rawCell = await readMonthParts(data.month, data.section, data.category, day);
+        if (rawCell.parts && rawCell.parts.length > 0) {
+            // Cell already has data — show conflict resolution menu
+            setState(phone, 'conflict_menu', { day, existingParts: rawCell.parts, existingTotal: rawCell.total });
+            return conflictMenuMsg(data, day, rawCell.parts, rawCell.total);
+        }
+        // Cell empty — normal flow
         setState(phone, 'enter_amount', { day });
         return [
             `✏️ *${crumb(data.month + ' 2026', data.section, data.category)}*`,
-            `📆 Day *${day}*`,
+            `📆 Day *${day}*  —  _cell is empty_`,
             LINE,
-            `Current value:  *${curVal}*`,
-            ``,
-            `Enter the new amount:`,
+            `Enter the amount:`,
             `_Numbers only  •  *0* clears the cell  •  *back* to go back_`,
         ].join('\n');
     }
 
-    // ── MONTHLY: ENTER AMOUNT ─────────────────────────────────────────────────
+    // ── CONFLICT MENU ─────────────────────────────────────────────────────────
+    if (state === 'conflict_menu') {
+        if (isBack(text) || text === '0') {
+            setState(phone, 'select_day');
+            return await screenSelectDay(data.month, data.section, data.category);
+        }
+        const { existingParts, existingTotal, day } = data;
+
+        if (text === '1') {  // Append
+            setState(phone, 'conflict_append');
+            return [
+                `📎 *Append Value*`,
+                LINE,
+                `Current: ${fmtParts(existingParts)}`,
+                `  _Total: *${fmtNum(existingTotal)}*_`,
+                LINE,
+                `Enter the value to *append* to the formula:`,
+                `_*back* to go back_`,
+            ].join('\n');
+        }
+        if (text === '2') {  // Delete
+            setState(phone, 'conflict_delete');
+            return partsListMsg(data, day, existingParts, 'delete');
+        }
+        if (text === '3') {  // Change
+            setState(phone, 'conflict_change_pick');
+            return partsListMsg(data, day, existingParts, 'change');
+        }
+        if (text === '4') {  // Replace (formula)
+            setState(phone, 'conflict_replace');
+            return [
+                `🔄 *Replace Value*`,
+                LINE,
+                `Current: ${fmtParts(existingParts)}`,
+                `  _Total: *${fmtNum(existingTotal)}*_`,
+                LINE,
+                `Enter the new value to *replace* the formula with:`,
+                `_This will store it as a single formula  •  *back* to go back_`,
+            ].join('\n');
+        }
+        if (text === '5') {  // Add (plain number)
+            setState(phone, 'conflict_add');
+            return [
+                `➕ *Overwrite with Plain Value*`,
+                LINE,
+                `Current: ${fmtParts(existingParts)}`,
+                `  _Total: *${fmtNum(existingTotal)}*_`,
+                LINE,
+                `Enter the value to *overwrite* the cell with (plain number, no formula):`,
+                `_*back* to go back_`,
+            ].join('\n');
+        }
+        return `⚠️ Reply *1* Append · *2* Delete · *3* Change · *4* Replace · *5* Add · *0* Cancel`;
+    }
+
+    // ── CONFLICT: APPEND ──────────────────────────────────────────────────────
+    if (state === 'conflict_append') {
+        if (isBack(text)) {
+            setState(phone, 'conflict_menu');
+            return conflictMenuMsg(data, data.day, data.existingParts, data.existingTotal);
+        }
+        const amt = parseFloat(text.replace(/,/g, ''));
+        if (isNaN(amt) || amt <= 0) return `⚠️ Enter a positive number, or *back* to go back.`;
+        const newParts = [...data.existingParts, amt];
+        const result   = await writeMonthParts(data.month, data.section, data.category, data.day, newParts, true);
+        clearSession(phone);
+        if (result.ok) {
+            const formula = newParts.map(fmtNum).join(' + ');
+            return [
+                `✅ *Appended!*`,
+                LINE,
+                `📅  ${data.month} 2026  ·  Day ${data.day}`,
+                `📂  ${data.section}  ›  ${data.category}`,
+                `📐  Formula: *${formula}*`,
+                `💰  Total:   *${fmtNum(newParts.reduce((a, b) => a + b, 0))}*`,
+                ``,
+                `_Send *Gofy* to continue._`,
+            ].join('\n');
+        }
+        return `❌ *Error:* ${result.error}\n_Send *Gofy* to try again._`;
+    }
+
+    // ── CONFLICT: DELETE ──────────────────────────────────────────────────────
+    if (state === 'conflict_delete') {
+        if (isBack(text) || text === '0') {
+            setState(phone, 'conflict_menu');
+            return conflictMenuMsg(data, data.day, data.existingParts, data.existingTotal);
+        }
+        const idx = parseInt(text, 10) - 1;
+        const { existingParts, day } = data;
+        if (isNaN(idx) || idx < 0 || idx >= existingParts.length)
+            return `⚠️ Enter a number between *1* and *${existingParts.length}*, or *0* to go back.`;
+        const removed  = existingParts[idx];
+        const newParts = existingParts.filter((_, i) => i !== idx);
+        const asFormula = newParts.length > 1;
+        const result   = await writeMonthParts(data.month, data.section, data.category, day, newParts, asFormula);
+        clearSession(phone);
+        if (result.ok) {
+            const display = newParts.length === 0
+                ? '_cell cleared_'
+                : newParts.length === 1
+                    ? `*${fmtNum(newParts[0])}*`
+                    : `*${newParts.map(fmtNum).join(' + ')}* = *${fmtNum(newParts.reduce((a, b) => a + b, 0))}*`;
+            return [
+                `✅ *Deleted!*`,
+                LINE,
+                `📅  ${data.month} 2026  ·  Day ${day}`,
+                `📂  ${data.section}  ›  ${data.category}`,
+                `🗑  Removed: *${fmtNum(removed)}*`,
+                `📐  Remaining: ${display}`,
+                ``,
+                `_Send *Gofy* to continue._`,
+            ].join('\n');
+        }
+        return `❌ *Error:* ${result.error}\n_Send *Gofy* to try again._`;
+    }
+
+    // ── CONFLICT: CHANGE (PICK PART) ──────────────────────────────────────────
+    if (state === 'conflict_change_pick') {
+        if (isBack(text) || text === '0') {
+            setState(phone, 'conflict_menu');
+            return conflictMenuMsg(data, data.day, data.existingParts, data.existingTotal);
+        }
+        const idx = parseInt(text, 10) - 1;
+        const { existingParts, day } = data;
+        if (isNaN(idx) || idx < 0 || idx >= existingParts.length)
+            return `⚠️ Enter a number between *1* and *${existingParts.length}*, or *0* to go back.`;
+        setState(phone, 'conflict_change_value', { changeIdx: idx });
+        return [
+            `✏️ *Change Part ${idx + 1}*`,
+            LINE,
+            `Replacing: *${fmtNum(existingParts[idx])}*`,
+            ``,
+            `Enter the *new value* for this part:`,
+            `_Numbers only  •  *back* to go back_`,
+        ].join('\n');
+    }
+
+    // ── CONFLICT: CHANGE (ENTER NEW VALUE) ───────────────────────────────────
+    if (state === 'conflict_change_value') {
+        if (isBack(text)) {
+            setState(phone, 'conflict_change_pick');
+            return partsListMsg(data, data.day, data.existingParts, 'change');
+        }
+        const newVal = parseFloat(text.replace(/,/g, ''));
+        if (isNaN(newVal) || newVal <= 0) return `⚠️ Enter a positive number, or *back* to go back.`;
+        const { existingParts, day, changeIdx } = data;
+        const oldVal  = existingParts[changeIdx];
+        const newParts = existingParts.map((v, i) => i === changeIdx ? newVal : v);
+        const asFormula = newParts.length > 1;
+        const result   = await writeMonthParts(data.month, data.section, data.category, day, newParts, asFormula);
+        clearSession(phone);
+        if (result.ok) {
+            const formula = newParts.length === 1
+                ? `*${fmtNum(newParts[0])}*`
+                : `*${newParts.map(fmtNum).join(' + ')}* = *${fmtNum(newParts.reduce((a, b) => a + b, 0))}*`;
+            return [
+                `✅ *Changed!*`,
+                LINE,
+                `📅  ${data.month} 2026  ·  Day ${day}`,
+                `📂  ${data.section}  ›  ${data.category}`,
+                `✏️  Part ${changeIdx + 1}: *${fmtNum(oldVal)}* → *${fmtNum(newVal)}*`,
+                `📐  New formula: ${formula}`,
+                ``,
+                `_Send *Gofy* to continue._`,
+            ].join('\n');
+        }
+        return `❌ *Error:* ${result.error}\n_Send *Gofy* to try again._`;
+    }
+
+    // ── CONFLICT: REPLACE (formula =newValue) ─────────────────────────────────
+    if (state === 'conflict_replace') {
+        if (isBack(text)) {
+            setState(phone, 'conflict_menu');
+            return conflictMenuMsg(data, data.day, data.existingParts, data.existingTotal);
+        }
+        const newVal = parseFloat(text.replace(/,/g, ''));
+        if (isNaN(newVal) || newVal <= 0) return `⚠️ Enter a positive number, or *back* to go back.`;
+        // Replace: single-value formula (stored as plain number since it's one part)
+        const result = await writeMonthParts(data.month, data.section, data.category, data.day, [newVal], false);
+        clearSession(phone);
+        if (result.ok) {
+            return [
+                `✅ *Replaced!*`,
+                LINE,
+                `📅  ${data.month} 2026  ·  Day ${data.day}`,
+                `📂  ${data.section}  ›  ${data.category}`,
+                `🔄  Old total: *${fmtNum(data.existingTotal)}*  →  New: *${fmtNum(newVal)}*`,
+                ``,
+                `_Send *Gofy* to continue._`,
+            ].join('\n');
+        }
+        return `❌ *Error:* ${result.error}\n_Send *Gofy* to try again._`;
+    }
+
+    // ── CONFLICT: ADD (plain number overwrite) ────────────────────────────────
+    if (state === 'conflict_add') {
+        if (isBack(text)) {
+            setState(phone, 'conflict_menu');
+            return conflictMenuMsg(data, data.day, data.existingParts, data.existingTotal);
+        }
+        const newVal = parseFloat(text.replace(/,/g, ''));
+        if (isNaN(newVal) || newVal <= 0) return `⚠️ Enter a positive number, or *back* to go back.`;
+        const result = await writeMonthValue(data.month, data.section, data.category, data.day, newVal);
+        clearSession(phone);
+        if (result.ok) {
+            return [
+                `✅ *Saved!*`,
+                LINE,
+                `📅  ${data.month} 2026  ·  Day ${data.day}`,
+                `📂  ${data.section}  ›  ${data.category}`,
+                `➕  Value: *${fmtNum(newVal)}*  _(plain number — no formula)_`,
+                ``,
+                `_Send *Gofy* to continue._`,
+            ].join('\n');
+        }
+        return `❌ *Error:* ${result.error}\n_Send *Gofy* to try again._`;
+    }
+
+        // ── MONTHLY: ENTER AMOUNT ─────────────────────────────────────────────────
     if (state === 'enter_amount') {
         if (text.toLowerCase() === 'back') { setState(phone, 'select_day'); return await screenSelectDay(data.month, data.section, data.category); }
         const amount = parseFloat(text.replace(/,/g, ''));

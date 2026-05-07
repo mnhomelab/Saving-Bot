@@ -515,7 +515,7 @@ function render(d){
   document.getElementById('last-upd').textContent=new Date().toLocaleTimeString('en-PK');
 }
 // ── Theme ──────────────────────────────────────────────────────────────────
-const REPORT_DARK_CSS=`
+const REPORT_DARK_CSS=\`
 body{background:#0a0f1e!important;color:#e2e8f0!important}
 .sum-box,.viz-card,.year-summary,.breakdown-section,.bb-section,.main-tabs,.month-tab-bar{background:#1e293b!important;color:#e2e8f0!important}
 .sum-box-featured{background:linear-gradient(135deg,#0f3460 0%,#0f2a1e 100%)!important;border-color:#0f766e!important}
@@ -558,7 +558,7 @@ tfoot td{background:#111827!important}
 .tpd-val{color:#4ade80!important}
 .bb-income{color:#4ade80!important}
 .bb-expense{color:#f87171!important}
-`;
+\`;
 
 function isDark(){return document.documentElement.getAttribute('data-theme')!=='light'}
 

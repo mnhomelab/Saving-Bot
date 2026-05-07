@@ -223,13 +223,20 @@ async function loadMonthData(month, wb) {
     const pettyCashUsed = Object.values(sectionData['Petty Cash Used'] || {}).reduce((a, b) => a + b, 0);
     const pettyCashLeft = pettyCashAvailable - pettyCashUsed;
 
-    const totalPerDay = {};
+    const totalPerDay     = {};
+    const bankPerDay      = {};
+    const pettyCashPerDay = {};
     for (const section of Object.keys(dailyData)) {
         if (section === 'INCOME') continue;
         for (const cat of Object.keys(dailyData[section])) {
             for (const [dayStr, val] of Object.entries(dailyData[section][cat])) {
                 const d = Number(dayStr);
                 totalPerDay[d] = (totalPerDay[d] || 0) + val;
+                if (section === 'Petty Cash Used') {
+                    pettyCashPerDay[d] = (pettyCashPerDay[d] || 0) + val;
+                } else {
+                    bankPerDay[d] = (bankPerDay[d] || 0) + val;
+                }
             }
         }
     }
@@ -260,7 +267,9 @@ async function loadMonthData(month, wb) {
         sectionData,
         pettyCashDailyRows,
         dailyData,
-        totalPerDay
+        totalPerDay,
+        bankPerDay,
+        pettyCashPerDay
     };
 }
 
@@ -507,14 +516,29 @@ function pettyCashTabHtml(month, pettyCashDailyRows, total) {
     </table>`;
 }
 
-function totalPerDayHtml(month, totalPerDay) {
+function totalPerDayHtml(month, totalPerDay, bankPerDay, pettyCashPerDay) {
     const days = Object.keys(totalPerDay).map(Number).sort((a, b) => a - b);
     if (days.length === 0) return '';
-    const monthIdx = MONTHS.indexOf(month) + 1;
-    const monStr = String(monthIdx).padStart(2,'0');
-    const grandTotal = days.reduce((s, d) => s + (totalPerDay[d] || 0), 0);
-    const headerCols = days.map(d => `<th>${String(d).padStart(2,'0')}/${monStr}</th>`).join('');
-    const valueCols  = days.map(d => `<td class="num tpd-val">${N(totalPerDay[d] || 0)}</td>`).join('');
+    bankPerDay      = bankPerDay      || {};
+    pettyCashPerDay = pettyCashPerDay || {};
+    const monthIdx  = MONTHS.indexOf(month) + 1;
+    const monStr    = String(monthIdx).padStart(2,'0');
+    const grandTotal = days.reduce((s, d) => s + (totalPerDay[d]      || 0), 0);
+    const grandBank  = days.reduce((s, d) => s + (bankPerDay[d]       || 0), 0);
+    const grandPC    = days.reduce((s, d) => s + (pettyCashPerDay[d]  || 0), 0);
+    const headerCols   = days.map(d => `<th>${String(d).padStart(2,'0')}/${monStr}</th>`).join('');
+    const bankCols     = days.map(d => {
+        const v = bankPerDay[d] || 0;
+        return v ? `<td class="num tpd-bank">${N(v)}</td>` : `<td class="num empty-cell"></td>`;
+    }).join('');
+    const pettyCols    = days.map(d => {
+        const v = pettyCashPerDay[d] || 0;
+        return v ? `<td class="num tpd-petty">${N(v)}</td>` : `<td class="num empty-cell"></td>`;
+    }).join('');
+    const totalCols    = days.map(d => {
+        const v = totalPerDay[d] || 0;
+        return v ? `<td class="num tpd-val">${N(v)}</td>` : `<td class="num empty-cell"></td>`;
+    }).join('');
     return `
     <div class="breakdown-section">
         <div class="breakdown-title" style="background:#0f766e">📅 Total Per Day</div>
@@ -523,11 +547,23 @@ function totalPerDayHtml(month, totalPerDay) {
             <thead><tr>
                 <th class="cat-col">Date</th>${headerCols}<th class="total-col">Grand Total</th>
             </tr></thead>
-            <tbody><tr>
-                <td class="cat-name"><strong>Total</strong></td>
-                ${valueCols}
+            <tbody>
+            <tr>
+                <td class="cat-name tpd-row-label">🏦 Bank Used</td>
+                ${bankCols}
+                <td class="num total-cell tpd-bank">${N(grandBank)}</td>
+            </tr>
+            <tr>
+                <td class="cat-name tpd-row-label">💵 Petty Cash Used</td>
+                ${pettyCols}
+                <td class="num total-cell tpd-petty">${N(grandPC)}</td>
+            </tr>
+            <tr class="tpd-total-row">
+                <td class="cat-name"><strong>Total Used</strong></td>
+                ${totalCols}
                 <td class="num total-cell"><strong>${N(grandTotal)}</strong></td>
-            </tr></tbody>
+            </tr>
+            </tbody>
         </table>
         </div>
     </div>`;
@@ -743,7 +779,12 @@ tr:last-child td { border-bottom: none; }
 .empty-cell { color: #94a3b8; font-weight: 400; }
 .total-cell { background: #f8fafc; font-weight: 700; }
 .sec-total  { font-weight: 600; color: #334155; }
-.tpd-val    { font-weight: 600; color: #0f766e; }
+.tpd-val        { font-weight: 600; color: #0f766e; }
+.tpd-bank       { font-weight: 600; color: #1e40af; }
+.tpd-petty      { font-weight: 600; color: #7c3aed; }
+.tpd-row-label  { font-size: 12px; color: #475569; }
+.tpd-total-row td { background: #f0fdf4; border-top: 2px solid #d1fae5; }
+.tpd-total-row .cat-name { font-weight: 700; color: #0f766e; }
 
 /* ── Main tabs ── */
 .main-tabs { display: flex; gap: 8px; padding: 14px 14px 0; border-bottom: 2px solid #e2e8f0; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; background: white; margin-bottom: 14px; }
@@ -870,7 +911,7 @@ ${summaryCardsHtml(d)}
 </div>
 <div id="mt_breakdown" class="main-tab-panel">
   <div class="section-wrap">
-    ${totalPerDayHtml(month, d.totalPerDay || {})}
+    ${totalPerDayHtml(month, d.totalPerDay || {}, d.bankPerDay || {}, d.pettyCashPerDay || {})}
     ${sectionBreakdownHtml(month, d.dailyData || {}, numDays)}
   </div>
   ${breakdownPieHtml(d.sectionData, month)}
@@ -950,7 +991,7 @@ function showMainTab_${m}(id, btn) {
             </div>
             <div id="mt_${m}_breakdown" class="main-tab-panel">
               <div class="section-wrap">
-                ${totalPerDayHtml(m, d.totalPerDay || {})}
+                ${totalPerDayHtml(m, d.totalPerDay || {}, d.bankPerDay || {}, d.pettyCashPerDay || {})}
                 ${sectionBreakdownHtml(m, d.dailyData || {}, numDaysM)}
               </div>
               ${breakdownPieHtml(d.sectionData, m)}

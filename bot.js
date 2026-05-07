@@ -5,6 +5,7 @@ const qrcode = require('qrcode-terminal');
 const { handleMessage } = require('./handler');
 const { startScheduler } = require('./scheduler');
 const { WHITELIST } = require('./config');
+const dashboard = require('./dashboard');
 
 const client = new Client({
     authStrategy: new LocalAuth({ dataPath: './session' }),
@@ -25,6 +26,15 @@ client.on('qr', (qr) => {
 // ── Ready ─────────────────────────────────────────────────────────────────────
 client.on('ready', () => {
     startScheduler(client);
+    dashboard.setBotOnline(true);
+    dashboard.setWhitelist(WHITELIST);
+    dashboard.setSchedules([
+        { label: '11:15 AM PKT', cron: '15 11 * * *' },
+        { label: '04:20 PM PKT', cron: '20 16 * * *' },
+        { label: '08:30 PM PKT', cron: '30 20 * * *' },
+        { label: '11:50 PM PKT', cron: '50 23 * * *' },
+    ]);
+    dashboard.startDashboard();
     console.log('✅ Saving-Bot-v0.1 is LIVE!');
     console.log(`🔒 Whitelist: ${WHITELIST.join(', ')}`);
     console.log('💬 Send "Gofy" to start\n');
@@ -60,6 +70,7 @@ async function processMessage(msg) {
     if (!WHITELIST.includes(number)) return;
 
     console.log(`📩 [${number}] ${body}`);
+    dashboard.logActivity(number, body, 'in');
 
     try {
         const reply = await handleMessage(number, body);
@@ -68,9 +79,11 @@ async function processMessage(msg) {
                 const media = MessageMedia.fromFilePath(reply.path);
                 await client.sendMessage(msg.from, media, { caption: reply.caption || '' });
                 console.log(`📎 [${number}] Sent file: ${reply.path}`);
+                dashboard.logActivity(number, reply.caption || `File: ${reply.path}`, 'out');
             } else {
                 await msg.reply(reply);
                 console.log(`📤 [${number}] ${reply.substring(0, 80)}`);
+                dashboard.logActivity(number, reply, 'out');
             }
         }
     } catch (err) {

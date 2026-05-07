@@ -3,6 +3,7 @@
 const path = require('path');
 const fs = require('fs');
 const { TEMPLATE_PATH } = require('./config');
+const dashboard = require('./dashboard');
 const { getActiveYear, setActiveYear, getExcelPath, isSchedulerStopped, stopSchedulerForNumber, startSchedulerForNumber } = require('./config');
 const {
     MONTHS, MONTH_DAYS, BUDGET_ROWS,
@@ -89,6 +90,7 @@ function screenMainMenu(phone) {
         `*📋 6*  Create New Year Template`,
         `*🔄 7*  Switch Active Year`,
         `*${isSchedulerStopped(phone) ? '▶️' : '⏸'} 8*  ${isSchedulerStopped(phone) ? 'Resume' : 'Stop'} Scheduled Backups`,
+        `*📊 9*  View Dashboard`,
         ``,
         LINE,
         `_Reply with a number  •  *help* for commands_`,
@@ -417,7 +419,21 @@ async function handleMessage(phone, text) {
                 ].join('\n');
             }
         }
-        return `⚠️ *Invalid choice.* Reply with *1 – 8*.`;
+        if (text === '9') {
+            setState(phone, 'dashboard_menu');
+            return [
+                `📊 *Monitoring Dashboard*`,
+                DLINE,
+                `  *1*  🔗  Preview  _(get your access link)_`,
+                `  *2*  ▶️  Start Dashboard Server`,
+                `  *3*  ⏹  Stop Dashboard Server`,
+                LINE,
+                `  *0*  ⬅ Back`,
+                ``,
+                `_Reply with number_`,
+            ].join('\n');
+        }
+        return `⚠️ *Invalid choice.* Reply with *1 – 9*.`;
     }
 
     // ── SUMMARY: TYPE ─────────────────────────────────────────────────────────
@@ -814,6 +830,41 @@ async function handleMessage(phone, text) {
             }
         }
         return `⚠️ Reply *1* to create, *2* to change year, *0* to go back.`;
+    }
+
+    // ── DASHBOARD MENU ────────────────────────────────────────────────────────
+    if (state === 'dashboard_menu') {
+        if (isBack(text)) { setState(phone, 'main_menu'); return screenMainMenu(phone); }
+        if (text === '1') {
+            if (!dashboard.isRunning()) dashboard.startDashboard();
+            const link = dashboard.generateToken(phone);
+            clearSession(phone);
+            return [
+                `🔗 *Your Dashboard Link*`,
+                DLINE,
+                link,
+                ``,
+                `🔒 Only your number can use this link`,
+                `📊 Live updates • no expiry`,
+                ``,
+                `_Send *Gofy* to return to menu._`,
+            ].join('\n');
+        }
+        if (text === '2') {
+            const res = dashboard.startDashboard();
+            clearSession(phone);
+            return res.ok
+                ? [`▶️ *Dashboard Started*`, LINE, `Send *9 → 1* to get your access link.`, ``, `_Send *Gofy* to return to menu._`].join('\n')
+                : [`⚠️ ${res.msg}`, ``, `_Send *Gofy* to return to menu._`].join('\n');
+        }
+        if (text === '3') {
+            const res = dashboard.stopDashboard();
+            clearSession(phone);
+            return res.ok
+                ? [`⏹ *Dashboard Stopped*`, LINE, `All sessions cleared.`, ``, `_Send *Gofy* to return to menu._`].join('\n')
+                : [`⚠️ ${res.msg}`, ``, `_Send *Gofy* to return to menu._`].join('\n');
+        }
+        return `⚠️ *Invalid.* Reply *1*, *2*, *3*, or *0* to go back.`;
     }
 
     // ── Fallback ──────────────────────────────────────────────────────────────

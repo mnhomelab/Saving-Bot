@@ -716,12 +716,18 @@ async function handleMessage(phone, text) {
         clearSession(phone);
         if (result.ok) {
             const formula = newParts.map(fmtNum).join(' + ');
+            const total   = newParts.reduce((a, b) => a + b, 0);
             const loc = data.conflictType === 'budget'
                 ? [`🏦  ${data.budget_field}`, `📅  ${data.budget_month} 2026`]
                 : [`📅  ${data.month} 2026  ·  Day ${data.day}`, `📂  ${data.section}  ›  ${data.category}`];
+            if (data.conflictType === 'budget') {
+                mailer.alertBudgetChange('appended', { phone, budget_field: data.budget_field, budget_month: data.budget_month, oldValue: fmtNum(data.existingTotal), newValue: fmtNum(total), formula }).catch(() => {});
+            } else {
+                mailer.alertDataChange('appended', { phone, month: data.month, section: data.section, category: data.category, day: data.day, oldValue: fmtNum(data.existingTotal), newValue: fmtNum(total), formula }).catch(() => {});
+            }
             return [`✅ *Appended!*`, LINE, ...loc,
                 `📐  Formula: *${formula}*`,
-                `💰  Total:   *${fmtNum(newParts.reduce((a, b) => a + b, 0))}*`,
+                `💰  Total:   *${fmtNum(total)}*`,
                 ``, `_Send *Gofy* to continue._`].join('\n');
         }
         return `❌ *Error:* ${result.error}\n_Send *Gofy* to try again._`;
@@ -747,14 +753,21 @@ async function handleMessage(phone, text) {
             : await writeMonthParts(data.month, data.section, data.category, day, newParts, asFormula);
         clearSession(phone);
         if (result.ok) {
+            const remaining = newParts.length ? newParts.reduce((a, b) => a + b, 0) : 0;
             const display = newParts.length === 0
                 ? '_cell cleared_'
                 : newParts.length === 1
                     ? `*${fmtNum(newParts[0])}*`
-                    : `*${newParts.map(fmtNum).join(' + ')}* = *${fmtNum(newParts.reduce((a, b) => a + b, 0))}*`;
+                    : `*${newParts.map(fmtNum).join(' + ')}* = *${fmtNum(remaining)}*`;
             const loc = data.conflictType === 'budget'
                 ? [`🏦  ${data.budget_field}`, `📅  ${data.budget_month} 2026`]
                 : [`📅  ${data.month} 2026  ·  Day ${day}`, `📂  ${data.section}  ›  ${data.category}`];
+            const fmlStr = newParts.length > 1 ? newParts.map(fmtNum).join(' + ') : null;
+            if (data.conflictType === 'budget') {
+                mailer.alertBudgetChange('deleted', { phone, budget_field: data.budget_field, budget_month: data.budget_month, oldValue: fmtNum(data.existingTotal), newValue: newParts.length ? fmtNum(remaining) : "(cleared)", formula: fmlStr }).catch(() => {});
+            } else {
+                mailer.alertDataChange('deleted', { phone, month: data.month, section: data.section, category: data.category, day: data.day, oldValue: fmtNum(data.existingTotal), newValue: newParts.length ? fmtNum(remaining) : "(cleared)", formula: fmlStr }).catch(() => {});
+            }
             return [`✅ *Deleted!*`, LINE, ...loc,
                 `🗑  Removed: *${fmtNum(removed)}*`,
                 `📐  Remaining: ${display}`,
@@ -805,12 +818,19 @@ async function handleMessage(phone, text) {
             : await writeMonthParts(data.month, data.section, data.category, day, newParts, asFormula);
         clearSession(phone);
         if (result.ok) {
-            const formula = newParts.length === 1
+            const newTotal = newParts.reduce((a, b) => a + b, 0);
+            const fmlStr   = newParts.length > 1 ? newParts.map(fmtNum).join(' + ') : null;
+            const formula  = newParts.length === 1
                 ? `*${fmtNum(newParts[0])}*`
-                : `*${newParts.map(fmtNum).join(' + ')}* = *${fmtNum(newParts.reduce((a, b) => a + b, 0))}*`;
+                : `*${newParts.map(fmtNum).join(' + ')}* = *${fmtNum(newTotal)}*`;
             const loc = data.conflictType === 'budget'
                 ? [`🏦  ${data.budget_field}`, `📅  ${data.budget_month} 2026`]
                 : [`📅  ${data.month} 2026  ·  Day ${day}`, `📂  ${data.section}  ›  ${data.category}`];
+            if (data.conflictType === 'budget') {
+                mailer.alertBudgetChange('changed', { phone, budget_field: data.budget_field, budget_month: data.budget_month, oldValue: fmtNum(oldVal), newValue: fmtNum(newVal), formula: fmlStr }).catch(() => {});
+            } else {
+                mailer.alertDataChange('changed', { phone, month: data.month, section: data.section, category: data.category, day: data.day, oldValue: fmtNum(oldVal), newValue: fmtNum(newVal), formula: fmlStr }).catch(() => {});
+            }
             return [`✅ *Changed!*`, LINE, ...loc,
                 `✏️  Part ${changeIdx + 1}: *${fmtNum(oldVal)}* → *${fmtNum(newVal)}*`,
                 `📐  New formula: ${formula}`,
@@ -835,6 +855,11 @@ async function handleMessage(phone, text) {
             const loc = data.conflictType === 'budget'
                 ? [`🏦  ${data.budget_field}`, `📅  ${data.budget_month} 2026`]
                 : [`📅  ${data.month} 2026  ·  Day ${data.day}`, `📂  ${data.section}  ›  ${data.category}`];
+            if (data.conflictType === 'budget') {
+                mailer.alertBudgetChange('replaced', { phone, budget_field: data.budget_field, budget_month: data.budget_month, oldValue: fmtNum(data.existingTotal), newValue: fmtNum(newVal) }).catch(() => {});
+            } else {
+                mailer.alertDataChange('replaced', { phone, month: data.month, section: data.section, category: data.category, day: data.day, oldValue: fmtNum(data.existingTotal), newValue: fmtNum(newVal) }).catch(() => {});
+            }
             return [`✅ *Replaced!*`, LINE, ...loc,
                 `🔄  Old: *${fmtNum(data.existingTotal)}*  →  New: *${fmtNum(newVal)}*`,
                 ``, `_Send *Gofy* to continue._`].join('\n');
@@ -858,6 +883,11 @@ async function handleMessage(phone, text) {
             const loc = data.conflictType === 'budget'
                 ? [`🏦  ${data.budget_field}`, `📅  ${data.budget_month} 2026`]
                 : [`📅  ${data.month} 2026  ·  Day ${data.day}`, `📂  ${data.section}  ›  ${data.category}`];
+            if (data.conflictType === 'budget') {
+                mailer.alertBudgetChange('added', { phone, budget_field: data.budget_field, budget_month: data.budget_month, oldValue: fmtNum(data.existingTotal), newValue: fmtNum(newVal) }).catch(() => {});
+            } else {
+                mailer.alertDataChange('added', { phone, month: data.month, section: data.section, category: data.category, day: data.day, oldValue: fmtNum(data.existingTotal), newValue: fmtNum(newVal) }).catch(() => {});
+            }
             return [`✅ *Saved!*`, LINE, ...loc,
                 `➕  Value: *${fmtNum(newVal)}*  _(plain number — no formula)_`,
                 ``, `_Send *Gofy* to continue._`].join('\n');
@@ -901,6 +931,7 @@ async function handleMessage(phone, text) {
             const result = await writeMonthValue(data.month, data.section, data.category, data.day, data.amount);
             clearSession(phone);
             if (result.ok) {
+                mailer.alertDataChange('added', { phone, month: data.month, section: data.section, category: data.category, day: data.day, oldValue: null, newValue: fmtNum(data.amount) }).catch(() => {});
                 return [
                     `✅ *Saved!*`,
                     LINE,
@@ -966,6 +997,7 @@ async function handleMessage(phone, text) {
             const result = await writeStartingBalance(data.sb_amount);
             clearSession(phone);
             if (result.ok) {
+                mailer.alertBudgetChange('added', { phone, budget_field: 'Starting Balance', budget_month: 'Year', oldValue: null, newValue: fmtNum(data.sb_amount) }).catch(() => {});
                 return [
                     `✅ *Starting Balance Updated!*`,
                     LINE,
@@ -1040,6 +1072,7 @@ async function handleMessage(phone, text) {
             const result = await writeBudgetValue(data.budget_field, data.budget_month, data.budget_amount);
             clearSession(phone);
             if (result.ok) {
+                mailer.alertBudgetChange('added', { phone, budget_field: data.budget_field, budget_month: data.budget_month, oldValue: null, newValue: fmtNum(data.budget_amount) }).catch(() => {});
                 return [
                     `✅ *Budget Updated!*`,
                     LINE,

@@ -69,6 +69,7 @@ client.on('ready', () => {
         { label: '11:50 PM PKT', cron: '50 23 * * *' },
     ]);
     dashboard.startDashboard();
+    dashboard.setClient(client);   // allow OTP login via WhatsApp
     refreshDashboardSummary();
     mailer.testSmtp().catch(() => {});        // SMTP connectivity test on every start
     mailer.alertBotOnline().catch(() => {});

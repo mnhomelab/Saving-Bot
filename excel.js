@@ -58,6 +58,21 @@ const ROW_MAP = {
     "MISCELLANEOUS|Bank Fees":158, "MISCELLANEOUS|Postage":159, "MISCELLANEOUS|Other":160,
 };
 
+// ── Derive SECTIONS from ROW_MAP — single source of truth ────────────────────
+// Returns { "INCOME": ["Wages & Tips", ...], "Petty Cash Used": [...], ... }
+// preserving the insertion order of ROW_MAP, so it always matches the Excel.
+function getSections() {
+    const out = {};
+    for (const key of Object.keys(ROW_MAP)) {
+        const pipe = key.indexOf('|');
+        const section  = key.slice(0, pipe);
+        const category = key.slice(pipe + 1);
+        if (!out[section]) out[section] = [];
+        out[section].push(category);
+    }
+    return out;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // BUDGET_ROWS — Budget sheet row mapping
 //   Row 8  = "Balance I Can Used (Bank)"  ← manually set per month in Budget sheet
@@ -1392,6 +1407,7 @@ async function getDayReport(month, day) {
 module.exports = {
     MONTHS, MONTH_DAYS, BUDGET_ROWS,
     readMonthValue, writeMonthValue,
+    getSections,
     readMonthParts,  writeMonthParts,
     readBudgetParts, writeBudgetParts,
     getDayReport,

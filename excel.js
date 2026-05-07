@@ -931,6 +931,86 @@ tr:last-child td { border-bottom: none; }
 .bb-mini-val   { font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
 `;
 
+// ── Embedded dark-mode overrides for standalone /report page ──────────────────
+const REPORT_DARK_CSS_EMBEDDED = `
+body{background:#0a0f1e!important;color:#e2e8f0!important}
+.header{background:#111827!important;border-bottom:1px solid #1e293b!important;color:#e2e8f0!important}
+.header h1,.header p{color:#e2e8f0!important}
+.sum-box,.viz-card,.year-summary,.breakdown-section,.bb-section,.main-tabs,.month-tab-bar{background:#1e293b!important;color:#e2e8f0!important;border-color:#2d3f5e!important}
+.sum-box-featured{background:linear-gradient(135deg,#0f3460 0%,#0f2a1e 100%)!important;border-color:#0f766e!important}
+.tab-btn{background:#1e293b!important;border-color:rgba(255,255,255,.12)!important;color:#94a3b8!important}
+.tab-btn.active{background:#0f766e!important;border-color:#0f766e!important;color:#fff!important}
+.main-tab-btn{color:#94a3b8!important}
+.main-tab-btn.active{color:#4ade80!important;border-bottom-color:#4ade80!important}
+.main-tabs{background:#111827!important;border-bottom-color:rgba(255,255,255,.07)!important}
+.month-tab-bar{background:#111827!important;border-bottom-color:rgba(255,255,255,.07)!important}
+table{background:#1e293b!important}
+tr{background:#1e293b!important}
+td{background:#1e293b!important;border-bottom-color:rgba(255,255,255,.06)!important;color:#e2e8f0!important}
+th{background:#0f3460!important;color:#e2e8f0!important}
+tfoot td{background:#111827!important}
+.breakdown-table th,.breakdown-table th.cat-col{background:#111827!important;color:#94a3b8!important;border-bottom-color:rgba(255,255,255,.08)!important}
+.breakdown-table th.total-col{background:#0f1f3a!important}
+.cat-name{background:#1e293b!important;color:#e2e8f0!important}
+.total-cell{background:#111827!important}
+.tpd-total-row td{background:#0d2017!important;border-top-color:rgba(15,118,110,.25)!important}
+.tpd-total-row .cat-name{background:#0d2017!important;color:#4ade80!important}
+.tpd-row-label{color:#94a3b8!important}
+.tpd-val{color:#4ade80!important}
+.tpd-bank{color:#60a5fa!important}
+.tpd-petty{color:#c084fc!important}
+.bb-head-month,.bb-head-num,.bb-head-status{background:#111827!important;border-bottom-color:rgba(255,255,255,.08)!important;color:#94a3b8!important}
+.bb-head-can{background:#0a2218!important;color:#4ade80!important}
+.bb-head-left{background:#0a1535!important;color:#60a5fa!important}
+.bb-month{background:#1e293b!important;color:#e2e8f0!important;border-bottom-color:rgba(255,255,255,.06)!important}
+.bb-num{background:#1e293b!important;border-bottom-color:rgba(255,255,255,.06)!important}
+.bb-can{background:rgba(15,118,110,.12)!important}
+.bb-left{background:rgba(30,64,175,.12)!important}
+.bb-status{background:#1e293b!important}
+.bb-mini{background:linear-gradient(135deg,#0f3460 0%,#0a2218 100%)!important;border-color:#0f766e!important}
+.bb-mini-row{border-bottom-color:rgba(15,118,110,.15)!important}
+.bb-mini-label{color:#94a3b8!important}
+.sum-row{border-bottom-color:rgba(255,255,255,.06)!important}
+.sum-label{color:#94a3b8!important}
+.sum-box-title{color:#e2e8f0!important}
+.section-title,.viz-title{color:#94d5cd!important}
+.viz-subtitle{color:#64748b!important}
+.section-wrap,.viz-wrap{color:#e2e8f0!important}
+.footer{background:#0a0f1e!important;color:#4b5563!important}
+.pill-good{background:#052e16!important;color:#4ade80!important}
+.pill-warn{background:#1c1400!important;color:#fbbf24!important}
+.pill-low{background:#1c0505!important;color:#f87171!important}
+.empty,.empty-row,.empty-cell{color:#4b5563!important}
+.sec-total{color:#94a3b8!important}
+.bb-income{color:#4ade80!important}
+.bb-expense{color:#f87171!important}
+`;
+
+// ── Dark/light toggle injected into report pages ──────────────────────────────
+const REPORT_TOGGLE_SCRIPT = `
+<style id="rpt-dark-style"></style>
+<button id="rpt-theme-btn" onclick="rptToggle()" style="
+  position:fixed;bottom:18px;right:18px;z-index:9999;
+  background:#1e293b;border:1px solid #334155;border-radius:10px;
+  padding:8px 14px;color:#e2e8f0;font-size:12px;font-family:monospace;
+  cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.4);transition:all .2s">
+  ☀️ Light
+</button>
+<script>
+(function(){
+  var DARK_CSS = ${JSON.stringify(REPORT_DARK_CSS_EMBEDDED)};
+  var dark = true;
+  function apply(){
+    document.getElementById('rpt-dark-style').textContent = dark ? DARK_CSS : '';
+    document.getElementById('rpt-theme-btn').textContent  = dark ? '☀️ Light' : '🌙 Dark';
+    document.body.style.background = dark ? '#0a0f1e' : '';
+  }
+  window.rptToggle = function(){ dark = !dark; apply(); };
+  apply();
+})();
+</script>`;
+
+
 const TAB_JS = `
 function showTab(id, btn) {
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
@@ -974,7 +1054,7 @@ function showMainTab(id, btn) {
     return `<!DOCTYPE html><html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${month} ${activeYear} Report</title>
-<style>${COMMON_CSS}</style></head><body>
+<style>${COMMON_CSS}</style>${REPORT_TOGGLE_SCRIPT}</head><body>
 <div class="header">
     <h1>💰 ${month} ${activeYear} Report</h1>
     <p>Gofy · ${new Date().toLocaleDateString('en-PK',{day:'numeric',month:'short',year:'numeric'})}</p>
@@ -1111,7 +1191,7 @@ ${COMMON_CSS}
 .month-tab-bar { display: flex; overflow-x: auto; gap: 6px; padding: 14px 14px 6px; -webkit-overflow-scrolling: touch; scrollbar-width: none; background: white; border-bottom: 1px solid #e2e8f0; }
 .month-tab-bar::-webkit-scrollbar { display: none; }
 th { background: #1e3a5f; color: white; padding: 9px 13px; font-size: 12px; text-align: left; }
-</style></head><body>
+</style>${REPORT_TOGGLE_SCRIPT}</head><body>
 <div class="header">
     <h1>📊 ${activeYear} Year Overview</h1>
     <p>SavingHomeLab · ${new Date().toLocaleDateString('en-PK',{day:'numeric',month:'short',year:'numeric'})}</p>

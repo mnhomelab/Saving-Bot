@@ -174,30 +174,139 @@ const ACTION_META = {
 // ─────────────────────────────────────────────────────────────────────────────
 // CHANGE / ADD / DELETE / REPLACE / APPEND ALERT
 // ─────────────────────────────────────────────────────────────────────────────
+
+// Renders a parts list as a formula string with individual values visible
+function partsList(parts) {
+    if (!parts || parts.length === 0) return '<span style="color:#4b5563;font-style:italic">empty</span>';
+    return parts.map((v, i) =>
+        `<span style="display:inline-block;background:#1a2235;border:1px solid #2d3f5e;border-radius:4px;padding:2px 8px;margin:2px;font-family:'Courier New',monospace;font-size:13px;color:#60a5fa">${N(v)}</span>`
+    ).join('<span style="color:#4b5563;font-size:12px;padding:0 2px">+</span>');
+}
+
+function beforeAfterBlock(beforeParts, beforeTotal, afterParts, afterTotal, accentColor) {
+    const hasBefore = beforeParts && beforeParts.length > 0;
+    const hasAfter  = afterParts  && afterParts.length  > 0;
+    return `
+    <div style="margin:0 32px 16px">
+      <!-- BEFORE -->
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:8px">
+        <tr>
+          <td width="60" style="padding-right:12px;vertical-align:top;padding-top:4px">
+            <div style="background:#1e293b;border:1px solid #374151;border-radius:6px;padding:4px 8px;font-size:10px;font-weight:700;color:#64748b;text-align:center;letter-spacing:.5px">BEFORE</div>
+          </td>
+          <td style="background:#111827;border:1px solid #1e293b;border-radius:8px;padding:12px 14px">
+            ${hasBefore
+                ? `<div style="margin-bottom:6px">${partsList(beforeParts)}</div>
+                   <div style="font-size:11px;color:#4b5563">Total: <span style="color:#94a3b8;font-weight:600">PKR ${N(beforeTotal)}</span></div>`
+                : `<span style="color:#4b5563;font-style:italic;font-size:13px">No previous value</span>`}
+          </td>
+        </tr>
+      </table>
+      <!-- ARROW -->
+      <div style="text-align:center;font-size:18px;color:${accentColor};margin:2px 0">↓</div>
+      <!-- AFTER -->
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:8px">
+        <tr>
+          <td width="60" style="padding-right:12px;vertical-align:top;padding-top:4px">
+            <div style="background:${accentColor}22;border:1px solid ${accentColor}44;border-radius:6px;padding:4px 8px;font-size:10px;font-weight:700;color:${accentColor};text-align:center;letter-spacing:.5px">AFTER</div>
+          </td>
+          <td style="background:#0a1424;border:1px solid ${accentColor}33;border-radius:8px;padding:12px 14px">
+            ${hasAfter
+                ? `<div style="margin-bottom:6px">${partsList(afterParts)}</div>
+                   <div style="font-size:11px;color:#4b5563">Total: <span style="color:${accentColor};font-weight:700">PKR ${N(afterTotal)}</span></div>`
+                : `<span style="color:#f87171;font-style:italic;font-size:13px">Cell cleared</span>`}
+          </td>
+        </tr>
+      </table>
+    </div>`;
+}
+
+function changeDetailBlock(action, details, color) {
+    const d = details;
+    if (action === 'added') {
+        return `<div style="margin:0 32px 16px;background:#0a1a2e;border:1px solid ${color}33;border-left:3px solid ${color};border-radius:0 8px 8px 0;padding:12px 16px">
+          <div style="font-size:10px;color:${color};font-weight:700;letter-spacing:1px;margin-bottom:6px">NEW ENTRY</div>
+          <div style="font-size:22px;font-weight:800;color:${color}">PKR ${N(d.newValue)}</div>
+          <div style="font-size:11px;color:#4b5563;margin-top:4px">First value recorded for this cell</div>
+        </div>`;
+    }
+    if (action === 'appended') {
+        return `<div style="margin:0 32px 16px;background:#0a1a2e;border:1px solid ${color}33;border-left:3px solid ${color};border-radius:0 8px 8px 0;padding:12px 16px">
+          <div style="font-size:10px;color:${color};font-weight:700;letter-spacing:1px;margin-bottom:8px">APPENDED VALUE</div>
+          <div style="font-size:20px;font-weight:700;color:${color}">+ PKR ${N(d.appendedValue)}</div>
+          <div style="font-size:11px;color:#4b5563;margin-top:4px">Added to formula · New total: <span style="color:${color};font-weight:600">PKR ${N(d.newTotal)}</span></div>
+        </div>`;
+    }
+    if (action === 'deleted') {
+        return `<div style="margin:0 32px 16px;background:#1a0a0a;border:1px solid #f8717133;border-left:3px solid #f87171;border-radius:0 8px 8px 0;padding:12px 16px">
+          <div style="font-size:10px;color:#f87171;font-weight:700;letter-spacing:1px;margin-bottom:8px">REMOVED PART ${d.deletedIndex}</div>
+          <div style="font-size:20px;font-weight:700;color:#f87171;text-decoration:line-through">PKR ${N(d.deletedValue)}</div>
+          <div style="font-size:11px;color:#4b5563;margin-top:4px">
+            ${d.newParts && d.newParts.length > 0
+                ? `Remaining: <span style="color:#94a3b8;font-weight:600">PKR ${N(d.newTotal)}</span>`
+                : 'Cell has been cleared'}
+          </div>
+        </div>`;
+    }
+    if (action === 'changed') {
+        return `<div style="margin:0 32px 16px;background:#1a140a;border:1px solid #fbbf2433;border-left:3px solid #fbbf24;border-radius:0 8px 8px 0;padding:12px 16px">
+          <div style="font-size:10px;color:#fbbf24;font-weight:700;letter-spacing:1px;margin-bottom:8px">PART ${d.changedIndex} MODIFIED</div>
+          <div style="font-size:14px;font-weight:600">
+            <span style="color:#f87171;text-decoration:line-through">PKR ${N(d.oldPartValue)}</span>
+            <span style="color:#4b5563;padding:0 8px">→</span>
+            <span style="color:#fbbf24">PKR ${N(d.newPartValue)}</span>
+          </div>
+          <div style="font-size:11px;color:#4b5563;margin-top:4px">New total: <span style="color:#fbbf24;font-weight:600">PKR ${N(d.newTotal)}</span></div>
+        </div>`;
+    }
+    if (action === 'replaced') {
+        return `<div style="margin:0 32px 16px;background:#140a1a;border:1px solid #c084fc33;border-left:3px solid #c084fc;border-radius:0 8px 8px 0;padding:12px 16px">
+          <div style="font-size:10px;color:#c084fc;font-weight:700;letter-spacing:1px;margin-bottom:8px">FULL REPLACEMENT</div>
+          <div style="font-size:14px;font-weight:600">
+            <span style="color:#f87171;text-decoration:line-through">PKR ${N(d.oldValue)}</span>
+            <span style="color:#4b5563;padding:0 8px">→</span>
+            <span style="color:#c084fc;font-size:20px">PKR ${N(d.newValue)}</span>
+          </div>
+          <div style="font-size:11px;color:#4b5563;margin-top:4px">Entire formula replaced with single value</div>
+        </div>`;
+    }
+    return '';
+}
+
 function buildChangeHtml(action, details, isBudget) {
     const { color, label, icon } = ACTION_META[action] || { color: '#64748b', label: action, icon: '📝' };
-    const { phone, oldValue, newValue, formula } = details;
+    const { phone, before, after } = details;
 
     const locRows = isBudget
         ? [['🏦 Field',    details.budget_field, '#e2e8f0'],
            ['📅 Month',    `${details.budget_month} 2026`, '#e2e8f0']]
-        : [['📂 Section',  details.section,  '#e2e8f0'],
+        : [['📂 Section',  details.section,  '#94a3b8'],
            ['🏷️ Category', details.category, color],
            ['📅 Month',    `${details.month} 2026`, '#e2e8f0'],
            ['📆 Day',      String(details.day), '#e2e8f0']];
 
-    const cards = [
-        { label: 'Previous', value: oldValue != null ? `PKR ${oldValue}` : '—', color: '#4b5563' },
-        { label: 'New Value', value: newValue != null ? `PKR ${newValue}` : '—', color },
-    ];
-
     const bodyHtml = `
-      ${statCards(cards)}
-      <table width="100%" cellpadding="0" cellspacing="0" border="0">
+      <!-- Action badge -->
+      <div style="padding:16px 32px 0">
+        <div style="display:inline-block;background:${color}22;border:1px solid ${color}55;border-radius:20px;padding:6px 16px;font-size:12px;font-weight:700;color:${color};letter-spacing:.5px">${icon} ${label.toUpperCase()}</div>
+      </div>
+
+      <!-- Location -->
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:12px 0 4px">
         ${locRows.map(([l, v, c]) => row(l, v, c)).join('')}
-        ${row('📱 By', phone, '#94a3b8')}
-        ${formulaPill(formula)}
-      </table>`;
+        ${row('📱 Changed By', phone, '#94a3b8')}
+      </table>
+
+      <!-- Divider -->
+      <div style="height:1px;background:linear-gradient(90deg,transparent,${color}33,transparent);margin:4px 0 16px"></div>
+
+      <!-- Change detail block -->
+      ${changeDetailBlock(action, details, color)}
+
+      <!-- Before / After comparison -->
+      ${(before || after) ? beforeAfterBlock(before?.parts, before?.total, after?.parts, after?.total, color) : ''}
+
+      <div style="height:8px"></div>`;
 
     const hdr = header(icon, label, isBudget ? 'Budget Update Alert' : 'Expense Tracker Alert', color);
     return shell(color, hdr, bodyHtml);

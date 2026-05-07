@@ -721,9 +721,9 @@ async function handleMessage(phone, text) {
                 ? [`🏦  ${data.budget_field}`, `📅  ${data.budget_month} 2026`]
                 : [`📅  ${data.month} 2026  ·  Day ${data.day}`, `📂  ${data.section}  ›  ${data.category}`];
             if (data.conflictType === 'budget') {
-                mailer.alertBudgetChange('appended', { phone, budget_field: data.budget_field, budget_month: data.budget_month, oldValue: fmtNum(data.existingTotal), newValue: fmtNum(total), formula }).catch(() => {});
+                mailer.alertBudgetChange('appended', { phone, budget_field: data.budget_field, budget_month: data.budget_month, before: { parts: data.existingParts, total: data.existingTotal }, after: { parts: newParts, total }, appendedValue: amt, newTotal: total }).catch(() => {});
             } else {
-                mailer.alertDataChange('appended', { phone, month: data.month, section: data.section, category: data.category, day: data.day, oldValue: fmtNum(data.existingTotal), newValue: fmtNum(total), formula }).catch(() => {});
+                mailer.alertDataChange('appended', { phone, month: data.month, section: data.section, category: data.category, day: data.day, before: { parts: data.existingParts, total: data.existingTotal }, after: { parts: newParts, total }, appendedValue: amt, newTotal: total }).catch(() => {});
             }
             return [`✅ *Appended!*`, LINE, ...loc,
                 `📐  Formula: *${formula}*`,
@@ -764,9 +764,9 @@ async function handleMessage(phone, text) {
                 : [`📅  ${data.month} 2026  ·  Day ${day}`, `📂  ${data.section}  ›  ${data.category}`];
             const fmlStr = newParts.length > 1 ? newParts.map(fmtNum).join(' + ') : null;
             if (data.conflictType === 'budget') {
-                mailer.alertBudgetChange('deleted', { phone, budget_field: data.budget_field, budget_month: data.budget_month, oldValue: fmtNum(data.existingTotal), newValue: newParts.length ? fmtNum(remaining) : "(cleared)", formula: fmlStr }).catch(() => {});
+                mailer.alertBudgetChange('deleted', { phone, budget_field: data.budget_field, budget_month: data.budget_month, before: { parts: data.existingParts, total: data.existingTotal }, after: { parts: newParts, total: remaining }, deletedValue: removed, deletedIndex: idx + 1, newParts, newTotal: remaining }).catch(() => {});
             } else {
-                mailer.alertDataChange('deleted', { phone, month: data.month, section: data.section, category: data.category, day: data.day, oldValue: fmtNum(data.existingTotal), newValue: newParts.length ? fmtNum(remaining) : "(cleared)", formula: fmlStr }).catch(() => {});
+                mailer.alertDataChange('deleted', { phone, month: data.month, section: data.section, category: data.category, day: data.day, before: { parts: data.existingParts, total: data.existingTotal }, after: { parts: newParts, total: remaining }, deletedValue: removed, deletedIndex: idx + 1, newParts, newTotal: remaining }).catch(() => {});
             }
             return [`✅ *Deleted!*`, LINE, ...loc,
                 `🗑  Removed: *${fmtNum(removed)}*`,
@@ -827,9 +827,9 @@ async function handleMessage(phone, text) {
                 ? [`🏦  ${data.budget_field}`, `📅  ${data.budget_month} 2026`]
                 : [`📅  ${data.month} 2026  ·  Day ${day}`, `📂  ${data.section}  ›  ${data.category}`];
             if (data.conflictType === 'budget') {
-                mailer.alertBudgetChange('changed', { phone, budget_field: data.budget_field, budget_month: data.budget_month, oldValue: fmtNum(oldVal), newValue: fmtNum(newVal), formula: fmlStr }).catch(() => {});
+                mailer.alertBudgetChange('changed', { phone, budget_field: data.budget_field, budget_month: data.budget_month, before: { parts: data.existingParts, total: data.existingTotal }, after: { parts: newParts, total: newTotal }, changedIndex: changeIdx + 1, oldPartValue: oldVal, newPartValue: newVal, newTotal }).catch(() => {});
             } else {
-                mailer.alertDataChange('changed', { phone, month: data.month, section: data.section, category: data.category, day: data.day, oldValue: fmtNum(oldVal), newValue: fmtNum(newVal), formula: fmlStr }).catch(() => {});
+                mailer.alertDataChange('changed', { phone, month: data.month, section: data.section, category: data.category, day: data.day, before: { parts: data.existingParts, total: data.existingTotal }, after: { parts: newParts, total: newTotal }, changedIndex: changeIdx + 1, oldPartValue: oldVal, newPartValue: newVal, newTotal }).catch(() => {});
             }
             return [`✅ *Changed!*`, LINE, ...loc,
                 `✏️  Part ${changeIdx + 1}: *${fmtNum(oldVal)}* → *${fmtNum(newVal)}*`,
@@ -856,9 +856,9 @@ async function handleMessage(phone, text) {
                 ? [`🏦  ${data.budget_field}`, `📅  ${data.budget_month} 2026`]
                 : [`📅  ${data.month} 2026  ·  Day ${data.day}`, `📂  ${data.section}  ›  ${data.category}`];
             if (data.conflictType === 'budget') {
-                mailer.alertBudgetChange('replaced', { phone, budget_field: data.budget_field, budget_month: data.budget_month, oldValue: fmtNum(data.existingTotal), newValue: fmtNum(newVal) }).catch(() => {});
+                mailer.alertBudgetChange('replaced', { phone, budget_field: data.budget_field, budget_month: data.budget_month, before: { parts: data.existingParts, total: data.existingTotal }, after: { parts: [newVal], total: newVal }, oldValue: data.existingTotal, newValue: newVal }).catch(() => {});
             } else {
-                mailer.alertDataChange('replaced', { phone, month: data.month, section: data.section, category: data.category, day: data.day, oldValue: fmtNum(data.existingTotal), newValue: fmtNum(newVal) }).catch(() => {});
+                mailer.alertDataChange('replaced', { phone, month: data.month, section: data.section, category: data.category, day: data.day, before: { parts: data.existingParts, total: data.existingTotal }, after: { parts: [newVal], total: newVal }, oldValue: data.existingTotal, newValue: newVal }).catch(() => {});
             }
             return [`✅ *Replaced!*`, LINE, ...loc,
                 `🔄  Old: *${fmtNum(data.existingTotal)}*  →  New: *${fmtNum(newVal)}*`,
@@ -884,9 +884,9 @@ async function handleMessage(phone, text) {
                 ? [`🏦  ${data.budget_field}`, `📅  ${data.budget_month} 2026`]
                 : [`📅  ${data.month} 2026  ·  Day ${data.day}`, `📂  ${data.section}  ›  ${data.category}`];
             if (data.conflictType === 'budget') {
-                mailer.alertBudgetChange('added', { phone, budget_field: data.budget_field, budget_month: data.budget_month, oldValue: fmtNum(data.existingTotal), newValue: fmtNum(newVal) }).catch(() => {});
+                mailer.alertBudgetChange('added', { phone, budget_field: data.budget_field, budget_month: data.budget_month, before: { parts: data.existingParts, total: data.existingTotal }, after: { parts: [newVal], total: newVal } }).catch(() => {});
             } else {
-                mailer.alertDataChange('added', { phone, month: data.month, section: data.section, category: data.category, day: data.day, oldValue: fmtNum(data.existingTotal), newValue: fmtNum(newVal) }).catch(() => {});
+                mailer.alertDataChange('added', { phone, month: data.month, section: data.section, category: data.category, day: data.day, before: { parts: data.existingParts, total: data.existingTotal }, after: { parts: [newVal], total: newVal } }).catch(() => {});
             }
             return [`✅ *Saved!*`, LINE, ...loc,
                 `➕  Value: *${fmtNum(newVal)}*  _(plain number — no formula)_`,
@@ -931,7 +931,7 @@ async function handleMessage(phone, text) {
             const result = await writeMonthValue(data.month, data.section, data.category, data.day, data.amount);
             clearSession(phone);
             if (result.ok) {
-                mailer.alertDataChange('added', { phone, month: data.month, section: data.section, category: data.category, day: data.day, oldValue: null, newValue: fmtNum(data.amount) }).catch(() => {});
+                mailer.alertDataChange('added', { phone, month: data.month, section: data.section, category: data.category, day: data.day, after: { parts: [data.amount], total: data.amount } }).catch(() => {});
                 return [
                     `✅ *Saved!*`,
                     LINE,
@@ -997,7 +997,7 @@ async function handleMessage(phone, text) {
             const result = await writeStartingBalance(data.sb_amount);
             clearSession(phone);
             if (result.ok) {
-                mailer.alertBudgetChange('added', { phone, budget_field: 'Starting Balance', budget_month: 'Year', oldValue: null, newValue: fmtNum(data.sb_amount) }).catch(() => {});
+                mailer.alertBudgetChange('added', { phone, budget_field: 'Starting Balance', budget_month: 'Year', after: { parts: [data.sb_amount], total: data.sb_amount } }).catch(() => {});
                 return [
                     `✅ *Starting Balance Updated!*`,
                     LINE,
@@ -1072,7 +1072,7 @@ async function handleMessage(phone, text) {
             const result = await writeBudgetValue(data.budget_field, data.budget_month, data.budget_amount);
             clearSession(phone);
             if (result.ok) {
-                mailer.alertBudgetChange('added', { phone, budget_field: data.budget_field, budget_month: data.budget_month, oldValue: null, newValue: fmtNum(data.budget_amount) }).catch(() => {});
+                mailer.alertBudgetChange('added', { phone, budget_field: data.budget_field, budget_month: data.budget_month, after: { parts: [data.budget_amount], total: data.budget_amount } }).catch(() => {});
                 return [
                     `✅ *Budget Updated!*`,
                     LINE,

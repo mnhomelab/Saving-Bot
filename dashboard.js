@@ -277,7 +277,7 @@ app.post('/send-code', (req, res) => {
     const phone = (req.body.phone || '').replace(/\D/g, '').trim();
     if (!phone) return res.json({ ok: false, error: 'Phone number required.' });
 
-    const whitelist = getWhitelist();
+    const whitelist = state.whitelist || [];
     if (!whitelist.includes(phone)) {
         return res.json({ ok: false, error: 'This number is not whitelisted.' });
     }

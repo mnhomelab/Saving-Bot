@@ -526,36 +526,44 @@ body{background:#0a0f1e!important;color:#e2e8f0!important}
 .main-tabs{background:#111827!important;border-bottom-color:rgba(255,255,255,.07)!important}
 .month-tab-bar{border-bottom-color:rgba(255,255,255,.07)!important}
 table{background:#1e293b!important}
-td{border-bottom-color:rgba(255,255,255,.06)!important;color:#e2e8f0!important}
+tr{background:#1e293b!important}
+td{background:#1e293b!important;border-bottom-color:rgba(255,255,255,.06)!important;color:#e2e8f0!important}
 th{background:#0f3460!important;color:#e2e8f0!important}
 tfoot td{background:#111827!important}
 .breakdown-table th,.breakdown-table th.cat-col{background:#111827!important;color:#94a3b8!important;border-bottom-color:rgba(255,255,255,.08)!important}
 .breakdown-table th.total-col{background:#0f1f3a!important}
 .cat-name{background:#1e293b!important;color:#e2e8f0!important}
 .total-cell{background:#111827!important}
+.tpd-total-row td{background:#0d2017!important;border-top-color:rgba(15,118,110,.25)!important}
+.tpd-total-row .cat-name{background:#0d2017!important;color:#4ade80!important}
+.tpd-row-label{color:#94a3b8!important}
+.tpd-val{color:#4ade80!important}
+.tpd-bank{color:#60a5fa!important}
+.tpd-petty{color:#c084fc!important}
 .bb-head-month,.bb-head-num,.bb-head-status{background:#111827!important;border-bottom-color:rgba(255,255,255,.08)!important;color:#94a3b8!important}
 .bb-head-can{background:#0a2218!important;color:#4ade80!important}
 .bb-head-left{background:#0a1535!important;color:#60a5fa!important}
 .bb-month{background:#1e293b!important;color:#e2e8f0!important;border-bottom-color:rgba(255,255,255,.06)!important}
-.bb-num{border-bottom-color:rgba(255,255,255,.06)!important}
+.bb-num{background:#1e293b!important;border-bottom-color:rgba(255,255,255,.06)!important}
 .bb-can{background:rgba(15,118,110,.12)!important}
 .bb-left{background:rgba(30,64,175,.12)!important}
+.bb-status{background:#1e293b!important}
 .bb-mini{background:linear-gradient(135deg,#0f3460 0%,#0a2218 100%)!important;border-color:#0f766e!important}
 .bb-mini-row{border-bottom-color:rgba(15,118,110,.15)!important}
 .bb-mini-label{color:#94a3b8!important}
 .sum-row{border-bottom-color:rgba(255,255,255,.06)!important}
 .sum-label{color:#94a3b8!important}
+.sum-value{color:#e2e8f0!important}
 .sum-box-title{color:#e2e8f0!important}
 .section-title,.viz-title{color:#94d5cd!important}
 .viz-subtitle{color:#64748b!important}
 .section-wrap,.viz-wrap{color:#e2e8f0!important}
-.footer{color:#4b5563!important}
+.footer{background:#0a0f1e!important;color:#4b5563!important}
 .pill-good{background:#052e16!important;color:#4ade80!important}
 .pill-warn{background:#1c1400!important;color:#fbbf24!important}
 .pill-low{background:#1c0505!important;color:#f87171!important}
 .empty,.empty-row,.empty-cell{color:#4b5563!important}
 .sec-total{color:#94a3b8!important}
-.tpd-val{color:#4ade80!important}
 .bb-income{color:#4ade80!important}
 .bb-expense{color:#f87171!important}
 \`;

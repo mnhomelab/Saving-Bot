@@ -7,6 +7,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 const express = require('express');
+const { createEditorRouter } = require('./editor');
 const crypto  = require('crypto');
 const https   = require('https');
 
@@ -230,6 +231,9 @@ function requireSession(req, res, next) {
 // ─────────────────────────────────────────────────────────────────────────────
 // ROUTES
 // ─────────────────────────────────────────────────────────────────────────────
+
+// Wire spreadsheet editor
+createEditorRouter(app, requireSession);
 
 // GET /go/:code  — short link, resolves to full token then logs in
 app.get('/go/:code', (req, res) => {

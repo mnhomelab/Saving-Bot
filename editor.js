@@ -13,6 +13,41 @@ const fs       = require('fs');
 const ExcelJS  = require('exceljs');
 const { getExcelPath, YEAR_FOLDER } = require('./config');
 
+// ── Backup directory ──────────────────────────────────────────────────────────
+const BACKUP_DIR = path.join(YEAR_FOLDER, 'backups');
+if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true });
+
+const MAX_BACKUPS_PER_FILE = 20;
+
+/**
+ * Copy `filePath` into BACKUP_DIR with a timestamp suffix before any write.
+ * Prunes oldest backups for this file when count exceeds MAX_BACKUPS_PER_FILE.
+ * Returns the backup filename on success, null on failure (non-fatal).
+ */
+function createBackup(filePath) {
+    try {
+        const base = path.basename(filePath, '.xlsx');
+        const ts   = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19); // 2026-05-09T14-23-11
+        const backupName = `${base}_${ts}.xlsx`;
+        const backupPath = path.join(BACKUP_DIR, backupName);
+        fs.copyFileSync(filePath, backupPath);
+
+        // Prune: keep newest MAX_BACKUPS_PER_FILE backups for this base name
+        const all = fs.readdirSync(BACKUP_DIR)
+            .filter(f => f.startsWith(base + '_') && f.endsWith('.xlsx'))
+            .sort(); // ISO timestamps sort lexicographically = chronologically
+        if (all.length > MAX_BACKUPS_PER_FILE) {
+            all.slice(0, all.length - MAX_BACKUPS_PER_FILE).forEach(old => {
+                try { fs.unlinkSync(path.join(BACKUP_DIR, old)); } catch {}
+            });
+        }
+        return backupName;
+    } catch (e) {
+        console.warn('⚠️  Backup failed (non-fatal):', e.message);
+        return null;
+    }
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function argbToCss(argb) {
     if (!argb || argb === '00000000' || argb === 'FF000000') return null;
@@ -73,11 +108,28 @@ async function readSheetData(filePath, sheetName) {
             let formula = null;
 
             if (value !== null && value !== undefined && typeof value === 'object') {
-                if ('formula' in value)       { formula = value.formula; value = value.result ?? ''; }
-                else if ('richText' in value) { value = value.richText.map(r => r.text).join(''); }
-                else if ('error' in value)    { value = '#ERR'; }
-                else if (value instanceof Date) { value = value.toLocaleDateString('en-PK'); }
-                else                          { value = String(value); }
+                if (value instanceof Date) {
+                    // Top-level Date value
+                    value = value.toLocaleDateString('en-PK');
+                } else if ('formula' in value || 'sharedFormula' in value) {
+                    // Regular formula OR shared formula (ExcelJS uses different keys)
+                    formula = value.formula || value.sharedFormula || '';
+                    value = value.result ?? '';
+                    // result itself may be a Date, error object, or other object
+                    if (value instanceof Date) {
+                        value = value.toLocaleDateString('en-PK');
+                    } else if (value !== null && value !== undefined && typeof value === 'object') {
+                        if ('error' in value) value = value.error || '#ERR';
+                        else value = String(value);
+                    }
+                } else if ('richText' in value) {
+                    value = value.richText.map(r => r.text).join('');
+                } else if ('error' in value) {
+                    value = value.error || '#ERR';
+                } else {
+                    // Catch-all — avoids raw [object Object]
+                    value = JSON.stringify(value);
+                }
             }
 
             const s = {};
@@ -162,6 +214,10 @@ function createEditorRouter(app, requireSession) {
         const filePath = path.join(YEAR_FOLDER, fileName);
         if (!fs.existsSync(filePath)) return res.json({ ok: false, error: 'File not found' });
         try {
+            // ── Backup BEFORE any write ───────────────────────────────────────
+            const backupName = createBackup(filePath);
+            console.log(`💾 Backup created: ${backupName || '(failed)'} before editing ${fileName}`);
+
             const wb = new ExcelJS.Workbook();
             await wb.xlsx.readFile(filePath);
             const ws = wb.getWorksheet(sheet);
@@ -178,8 +234,34 @@ function createEditorRouter(app, requireSession) {
                 cell.value = v;
             }
             await wb.xlsx.writeFile(filePath);
-            res.json({ ok: true });
+            res.json({ ok: true, backup: backupName });
         } catch (e) { res.json({ ok: false, error: e.message }); }
+    });
+
+    // List backups for a file
+    app.get('/api/edit/backups', requireSession, (req, res) => {
+        const fileName = path.basename(req.query.file || '');
+        if (!fileName) return res.json({ ok: false, error: 'No file specified' });
+        try {
+            const base = fileName.replace(/\.xlsx$/i, '');
+            const backups = fs.readdirSync(BACKUP_DIR)
+                .filter(f => f.startsWith(base + '_') && f.endsWith('.xlsx'))
+                .sort().reverse()   // newest first
+                .map(name => {
+                    const stat = fs.statSync(path.join(BACKUP_DIR, name));
+                    return { name, size: stat.size, mtime: stat.mtime };
+                });
+            res.json({ ok: true, backups });
+        } catch (e) { res.json({ ok: false, error: e.message }); }
+    });
+
+    // Download a backup file
+    app.get('/api/edit/backup-download', requireSession, (req, res) => {
+        const name = path.basename(req.query.name || '');
+        if (!name) return res.status(400).send('No name');
+        const filePath = path.join(BACKUP_DIR, name);
+        if (!fs.existsSync(filePath)) return res.status(404).send('Not found');
+        res.download(filePath, name);
     });
 
     // Editor HTML
@@ -279,6 +361,25 @@ td.dc:hover:not(.sel){background:rgba(255,255,255,.03)!important}
 .saved-toast{position:fixed;bottom:48px;right:16px;background:#052e16;border:1px solid #166534;color:#4ade80;
   border-radius:8px;padding:8px 16px;font-size:12px;z-index:999;opacity:0;transition:opacity .3s;pointer-events:none}
 .saved-toast.show{opacity:1}
+
+/* ── Backup panel ── */
+.bk-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:200;display:none;align-items:flex-start;justify-content:flex-end;padding:56px 16px 0}
+.bk-overlay.open{display:flex}
+.bk-panel{background:var(--surface);border:1px solid var(--border);border-radius:10px;width:360px;max-height:70vh;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,.5)}
+.bk-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--border)}
+.bk-head h3{font-size:13px;font-weight:700;color:#94d5cd;margin:0}
+.bk-close{background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px;line-height:1;padding:0 4px}
+.bk-close:hover{color:var(--text)}
+.bk-body{overflow-y:auto;flex:1;padding:6px 0}
+.bk-body::-webkit-scrollbar{width:6px}
+.bk-body::-webkit-scrollbar-thumb{background:#2d3f5e;border-radius:3px}
+.bk-item{display:flex;align-items:center;justify-content:space-between;padding:7px 14px;font-size:11px;border-bottom:1px solid rgba(30,41,59,.6);gap:8px}
+.bk-item:last-child{border-bottom:none}
+.bk-name{color:var(--text);font-family:monospace;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bk-meta{color:var(--muted2);white-space:nowrap;font-size:10px}
+.bk-dl{background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:#60a5fa;font-size:10px;padding:2px 8px;cursor:pointer;text-decoration:none;white-space:nowrap}
+.bk-dl:hover{border-color:#60a5fa}
+.bk-empty{padding:24px;text-align:center;color:var(--muted);font-size:12px}
 </style>
 </head>
 <body>
@@ -293,6 +394,7 @@ td.dc:hover:not(.sel){background:rgba(255,255,255,.03)!important}
   <div class="sep"></div>
   <span id="cellCount" class="tag">—</span>
   <div style="flex:1"></div>
+  <button class="btn sec" onclick="openBackups()" title="View & download backups" style="font-size:12px">🗂 Backups</button>
   <a class="btn sec" href="/" style="text-decoration:none;padding:5px 12px;font-size:12px">← Dashboard</a>
 </div>
 
@@ -315,6 +417,17 @@ td.dc:hover:not(.sel){background:rgba(255,255,255,.03)!important}
 </div>
 <div class="saved-toast" id="savedToast">✓ Saved</div>
 
+<!-- Backup panel -->
+<div class="bk-overlay" id="bkOverlay" onclick="e => { if(e.target===this) closeBackups(); }">
+  <div class="bk-panel">
+    <div class="bk-head">
+      <h3>🗂 Backups</h3>
+      <button class="bk-close" onclick="closeBackups()">✕</button>
+    </div>
+    <div class="bk-body" id="bkBody"><div class="bk-empty">Loading…</div></div>
+  </div>
+</div>
+
 <script>
 let curFile = '', curSheet = '', selR = 0, selC = 0;
 let sheetData = null; // { maxRow, maxCol, colWidths, rowHeights, cells }
@@ -322,6 +435,19 @@ let editing = false;
 let pendingSave = null;
 
 const NUM_FMT = n => typeof n === 'number' ? n.toLocaleString('en-PK') : (n ?? '');
+
+// ── Color contrast helper ─────────────────────────────────────────────────────
+// Returns true when a hex color (#rrggbb) is perceptually "light"
+function isLightBg(hex) {
+    if (!hex || hex.length < 7) return false;
+    try {
+        const r = parseInt(hex.slice(1, 3), 16);
+        const g = parseInt(hex.slice(3, 5), 16);
+        const b = parseInt(hex.slice(5, 7), 16);
+        // W3C relative luminance formula
+        return (r * 299 + g * 587 + b * 114) / 1000 > 140;
+    } catch { return false; }
+}
 
 // ── Col letter ────────────────────────────────────────────────────────────────
 function colLetter(n) {
@@ -421,7 +547,13 @@ function cellHtml(r, c, cell, w) {
     let cls = 'dc';
     if (s) {
         if (s.bg) style += \`background:\${s.bg};\`;
-        if (s.fc) style += \`color:\${s.fc};\`;
+        if (s.fc) {
+            style += \`color:\${s.fc};\`;
+        } else if (s.bg && isLightBg(s.bg)) {
+            // Light Excel background with no explicit font colour — force dark text
+            // so the editor mirrors the template's contrast (dark ink on light cells).
+            style += 'color:#1a202c;';
+        }
         if (s.b)  style += 'font-weight:700;';
         if (s.i)  style += 'font-style:italic;';
         if (s.sz) style += \`font-size:\${s.sz}px;\`;
@@ -632,20 +764,74 @@ document.getElementById('fbarInput').addEventListener('focus', () => {
 // ── Save cell ─────────────────────────────────────────────────────────────────
 async function saveCell(r, c, value) {
     try {
-        await fetch('/api/edit/cell', {
+        const resp = await fetch('/api/edit/cell', {
             method: 'POST',
             headers: {'Content-Type':'application/json'},
             body: JSON.stringify({ file: curFile, sheet: curSheet, row: r, col: c, value })
         });
-        showToast();
-    } catch {}
+        const data = await resp.json();
+        if (data.ok) {
+            showToast(data.backup);
+        } else {
+            showToast(null, data.error || 'Save failed');
+        }
+    } catch (e) { showToast(null, 'Network error'); }
 }
 
-function showToast() {
+function showToast(backupName, errMsg) {
     const t = document.getElementById('savedToast');
+    if (errMsg) {
+        t.style.background = '#450a0a';
+        t.style.borderColor = '#991b1b';
+        t.style.color = '#fca5a5';
+        t.textContent = '✗ ' + errMsg;
+    } else {
+        t.style.background = '#052e16';
+        t.style.borderColor = '#166534';
+        t.style.color = '#4ade80';
+        t.textContent = backupName ? \`✓ Saved · backup: \${backupName}\` : '✓ Saved';
+    }
     t.classList.add('show');
     clearTimeout(window._tt);
-    window._tt = setTimeout(() => t.classList.remove('show'), 1800);
+    window._tt = setTimeout(() => t.classList.remove('show'), 2800);
+}
+
+// ── Backup panel ──────────────────────────────────────────────────────────────
+function openBackups() {
+    document.getElementById('bkOverlay').classList.add('open');
+    loadBackups();
+}
+function closeBackups() {
+    document.getElementById('bkOverlay').classList.remove('open');
+}
+// Close on overlay click
+document.getElementById('bkOverlay').addEventListener('click', function(e) {
+    if (e.target === this) closeBackups();
+});
+
+async function loadBackups() {
+    const body = document.getElementById('bkBody');
+    body.innerHTML = '<div class="bk-empty">Loading…</div>';
+    if (!curFile) { body.innerHTML = '<div class="bk-empty">No file selected.</div>'; return; }
+    try {
+        const r = await fetch('/api/edit/backups?file=' + encodeURIComponent(curFile));
+        const d = await r.json();
+        if (!d.ok || !d.backups.length) {
+            body.innerHTML = '<div class="bk-empty">No backups yet for this file.<br>Backups are created automatically on every save.</div>';
+            return;
+        }
+        body.innerHTML = d.backups.map(b => {
+            const dt = new Date(b.mtime).toLocaleString('en-PK', { timeZone: 'Asia/Karachi' });
+            const kb = (b.size / 1024).toFixed(1) + ' KB';
+            return \`<div class="bk-item">
+  <span class="bk-name" title="\${escH(b.name)}">\${escH(b.name)}</span>
+  <span class="bk-meta">\${kb} · \${escH(dt)}</span>
+  <a class="bk-dl" href="/api/edit/backup-download?name=\${encodeURIComponent(b.name)}" download="\${escH(b.name)}">⬇ Download</a>
+</div>\`;
+        }).join('');
+    } catch {
+        body.innerHTML = '<div class="bk-empty">Failed to load backups.</div>';
+    }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

@@ -193,7 +193,7 @@ function editorHtml() { return `<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Spreadsheet Editor · Saving Bot</title>
-<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -218,9 +218,9 @@ select:focus{border-color:var(--accent)}
 
 /* ── Formula bar ── */
 .fbar{background:#0a1020;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;padding:3px 10px;flex-shrink:0}
-.cell-ref{background:var(--surface);border:1px solid #2d3f5e;border-radius:4px;padding:3px 10px;min-width:64px;text-align:center;font-family:'DM Mono',monospace;font-size:12px;color:#60a5fa;font-weight:600}
+.cell-ref{background:var(--surface);border:1px solid #2d3f5e;border-radius:4px;padding:3px 10px;min-width:64px;text-align:center;font-family:monospace;font-size:12px;color:#60a5fa;font-weight:600}
 .fx-label{color:var(--muted);font-size:12px;font-style:italic;padding:0 4px}
-.fbar-input{flex:1;background:transparent;border:none;color:var(--text);font-family:'DM Mono',monospace;font-size:12px;outline:none;padding:3px 6px}
+.fbar-input{flex:1;background:transparent;border:none;color:var(--text);font-family:monospace;font-size:12px;outline:none;padding:3px 6px}
 .fbar-input:focus{background:rgba(15,118,110,.06);border-radius:4px}
 
 /* ── Layout ── */
@@ -238,7 +238,7 @@ select:focus{border-color:var(--accent)}
 .tab.active{background:var(--accent);color:#fff;border-color:var(--accent)}
 
 /* ── Grid table ── */
-table{border-collapse:collapse;font-size:12px;font-family:'DM Mono',monospace}
+table{border-collapse:collapse;font-size:12px;font-family:monospace}
 
 /* Header row */
 .ch{background:var(--hdr-bg);color:var(--muted2);text-align:center;font-size:10px;font-weight:600;
@@ -265,7 +265,7 @@ td.dc.editing-cell{padding:0!important;overflow:visible;z-index:30}
 td.dc.editing-cell input{
   position:absolute;inset:0;width:100%;min-width:120px;
   background:#0a1a2e;color:#fff;border:2px solid #0f766e;
-  font-family:'DM Mono',monospace;font-size:12px;padding:0 4px;
+  font-family:monospace;font-size:12px;padding:0 4px;
   outline:none;z-index:30;box-shadow:0 2px 12px rgba(15,118,110,.3)}
 
 /* Row/col highlight on hover */
@@ -529,7 +529,7 @@ function startEdit(r, c, initChar) {
         : (cell?.f ? ('=' + cell.f) : String(cell?.v ?? ''));
     const inp = document.createElement('input');
     inp.value = initVal;
-    inp.style.cssText = 'position:absolute;inset:0;width:100%;min-width:120px;background:#0a1a2e;color:#fff;border:2px solid #0f766e;font-family:\'DM Mono\',monospace;font-size:12px;padding:0 4px;outline:none;z-index:30;';
+    inp.style.cssText = "position:absolute;inset:0;width:100%;min-width:120px;background:#0a1a2e;color:#fff;border:2px solid #0f766e;font-family:monospace;font-size:12px;padding:0 4px;outline:none;z-index:30;";
     td.innerHTML = '';
     td.appendChild(inp);
     inp.focus();

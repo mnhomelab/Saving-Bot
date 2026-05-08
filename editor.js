@@ -575,46 +575,10 @@ function toggleTheme() {
 }
 
 // ── Dark-mode cell background adapter ────────────────────────────────────────
-// Strategy (matches screenshots exactly):
-//   Vivid / dark colours  (lum < 140)  → keep as-is  (green, navy, orange, amber, red, yellow all pop on dark canvas)
-//   Light tints           (lum 140-220) → darken significantly, preserving the hue
-//     e.g. pale-green alternating rows → very dark green tint (Image 2)
-//          pale-blue alternating rows  → very dark blue tint  (Image 3)
-//          pale-orange rows            → very dark orange tint
-//   Near-white / white    (lum > 220)  → return null → CSS var(--cell-bg) = #0d1117 handles it
-function adaptBgDark(hex) {
-    if (!hex) return null;
-    try {
-        const r = parseInt(hex.slice(1,3), 16);
-        const g = parseInt(hex.slice(3,5), 16);
-        const b = parseInt(hex.slice(5,7), 16);
-        const lum = (r*299 + g*587 + b*114) / 1000;
-
-        if (lum > 220) return null;          // near-white → let CSS dark bg show
-
-        if (lum > 140) {
-            // Light tinted alternating row — darken: keep hue, crush brightness
-            // Blend 12% of the original with a dark base
-            const nr = Math.min(255, Math.round(r * 0.14 + 8));
-            const ng = Math.min(255, Math.round(g * 0.14 + 10));
-            const nb = Math.min(255, Math.round(b * 0.14 + 14));
-            return '#' + [nr,ng,nb].map(x => x.toString(16).padStart(2,'0')).join('');
-        }
-
-        return hex; // vivid / dark — keep exactly as in the template screenshots
-    } catch { return null; }
-}
-
-// ── Color contrast helper ─────────────────────────────────────────────────────
-function isLightBg(hex) {
-    if (!hex || hex.length < 7) return true;
-    try {
-        const r = parseInt(hex.slice(1, 3), 16);
-        const g = parseInt(hex.slice(3, 5), 16);
-        const b = parseInt(hex.slice(5, 7), 16);
-        return (r * 299 + g * 587 + b * 114) / 1000 > 140;
-    } catch { return true; }
-}
+// Backgrounds are NEVER modified — Excel colours render identically in both modes.
+// Only the default (no-fill) cell bg changes via CSS var(--cell-bg).
+// This function is intentionally a no-op passthrough kept for reference.
+// Font colour is handled separately in cellHtml.
 
 // ── Col letter ────────────────────────────────────────────────────────────────
 function colLetter(n) {
@@ -713,27 +677,28 @@ function cellHtml(r, c, cell, w) {
     let style = \`min-width:\${w}px;width:\${w}px;\`;
     let cls = 'dc';
     if (s) {
-        // ── Background ───────────────────────────────────────────────────────
-        // In dark mode: vivid colours stay as-is; light tints are darkened;
-        // near-white → no inline bg (CSS var(--cell-bg) = #0d1117 takes over).
-        const effectiveBg = darkMode ? adaptBgDark(s.bg) : s.bg;
-        if (effectiveBg) style += \`background:\${effectiveBg};\`;
+        // ── Background — NEVER changed, identical in both modes ──────────────
+        if (s.bg) style += \`background:\${s.bg};\`;
 
-        // ── Font colour ──────────────────────────────────────────────────────
+        // ── Font colour rules ────────────────────────────────────────────────
+        // Priority 1: explicit font colour from Excel → always honour it
+        // Priority 2: row has a background colour → always white (matches screenshot)
+        // Priority 3: no background (plain cell) → white in dark mode, black in light
         if (s.fc) {
             style += \`color:\${s.fc};\`;
-        } else if (effectiveBg) {
-            // Auto-contrast: dark bg cell → white text; light bg → black text
-            style += isLightBg(effectiveBg) ? 'color:#000000;' : 'color:#ffffff;';
-        } else if (darkMode) {
-            // No bg colour (cell is dark default) — use light text
-            style += 'color:var(--text);';
+        } else if (s.bg) {
+            style += 'color:#ffffff;';           // any colored row → white text
+        } else {
+            style += darkMode ? 'color:#e6edf3;' : 'color:#000000;';
         }
         if (s.b)  style += 'font-weight:700;';
         if (s.i)  style += 'font-style:italic;';
         if (s.sz) style += \`font-size:\${s.sz}px;\`;
         if (s.ha) style += \`text-align:\${s.ha};\`;
         if (s.wrap) style += 'white-space:normal;';
+    } else {
+        // Cell has no style at all — just adapt default text to mode
+        style += darkMode ? 'color:#e6edf3;' : 'color:#000000;';
     }
     if (f) cls += ' fml';
     else if (typeof v === 'number') cls += ' num';

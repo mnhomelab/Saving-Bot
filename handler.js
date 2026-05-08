@@ -7,7 +7,7 @@ const dashboard = require('./dashboard');
 const { getActiveYear, setActiveYear, getExcelPath, isSchedulerStopped, stopSchedulerForNumber, startSchedulerForNumber } = require('./config');
 const {
     MONTHS, MONTH_DAYS, BUDGET_ROWS,
-    getSections,
+    getSections, loadSectionsFromExcel,
     readMonthValue, writeMonthValue,
     readMonthParts,  writeMonthParts,
     readBudgetParts, writeBudgetParts,
@@ -22,11 +22,30 @@ const {
 } = require('./excel');
 
 // ── Sections & Categories ─────────────────────────────────────────────────────
-// Sections and categories are derived live from the Excel ROW_MAP —
-// guaranteed to match Saving-<Year>.xlsx at all times.
-const SECTIONS      = getSections();
-const SECTION_NAMES = Object.keys(SECTIONS);
+// Sections and categories loaded live from Saving-<Year>.xlsx
+// Falls back to ROW_MAP-derived static list if file is unavailable.
+let SECTIONS      = getSections();   // initialised synchronously from ROW_MAP
+let SECTION_NAMES = Object.keys(SECTIONS);
 const BUDGET_FIELDS = Object.keys(BUDGET_ROWS);
+
+// Refresh sections from the actual Excel on first message and after year changes
+let _liveRowMap = null;
+async function refreshSections() {
+    try {
+        const { sections, rowMap } = await loadSectionsFromExcel();
+        SECTIONS      = sections;
+        SECTION_NAMES = Object.keys(sections);
+        _liveRowMap   = rowMap;
+    } catch { /* keep static fallback */ }
+}
+refreshSections(); // fire once at startup
+
+// Use live row map for writes if available, fall back to static ROW_MAP
+async function resolvedRowMap() {
+    if (_liveRowMap) return _liveRowMap;
+    await refreshSections();
+    return _liveRowMap || {};
+}
 
 // ── Sessions ──────────────────────────────────────────────────────────────────
 const sessions = {};

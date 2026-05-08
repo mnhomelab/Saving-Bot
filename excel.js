@@ -58,9 +58,7 @@ const ROW_MAP = {
     "MISCELLANEOUS|Bank Fees":158, "MISCELLANEOUS|Postage":159, "MISCELLANEOUS|Other":160,
 };
 
-// ── Derive SECTIONS from ROW_MAP — single source of truth ────────────────────
-// Returns { "INCOME": ["Wages & Tips", ...], "Petty Cash Used": [...], ... }
-// preserving the insertion order of ROW_MAP, so it always matches the Excel.
+// ── Derive SECTIONS from ROW_MAP — static fallback ───────────────────────────
 function getSections() {
     const out = {};
     for (const key of Object.keys(ROW_MAP)) {
@@ -72,6 +70,71 @@ function getSections() {
     }
     return out;
 }
+
+// ── Live sections from Saving-<Year>.xlsx — includes custom filled-in rows ────
+// Reads a month worksheet (Jan sheet) and parses section headers + categories.
+// Returns { sections: {...}, rowMap: { "Section|Category": rowNum, ... } }
+// Cache is busted on every new year file load.
+
+let _sectionsCache     = null;
+let _sectionsCachePath = '';
+
+const SECTION_HEADERS = new Set([
+    'INCOME','Petty Cash Used','SAVINGS EXPENSE','HOME EXPENSES','DAILY LIVING',
+    'CHILDREN','TRANSPORTATION','HEALTH','EDUCATION','CHARITY/GIFTS','OBLIGATIONS',
+    'ENTERTAINMENT','SUBSCRIPTIONS','VACATION','MISCELLANEOUS'
+]);
+const SKIP_VALS = /^(Total|%\s*of|<Name-Of-Entry>|\[|Summary|Total Per Day|By$)/i;
+const MAX_DATA_ROW = 165; // rows beyond this are summaries, not categories
+
+async function loadSectionsFromExcel() {
+    const filePath = getExcelPath();
+    if (_sectionsCache && _sectionsCachePath === filePath) return _sectionsCache;
+
+    const wb = new ExcelJS.Workbook();
+    try { await wb.xlsx.readFile(filePath); }
+    catch { return { sections: getSections(), rowMap: ROW_MAP }; }
+
+    // Use the Jan sheet (abbreviated month name) as the structure template
+    const ws = wb.getWorksheet('Jan');
+    if (!ws) return { sections: getSections(), rowMap: ROW_MAP };
+
+    const sections = {};
+    const rowMap   = {};
+    let   currentSection = null;
+
+    for (let r = 1; r <= MAX_DATA_ROW; r++) {
+        const raw = ws.getCell(r, 1).value;
+        if (!raw || typeof raw !== 'string') continue;
+        const val = raw.trim();
+        if (!val) continue;
+
+        // Detect section header
+        if (SECTION_HEADERS.has(val) ||
+            (val === val.toUpperCase() && val.length > 2 && !/^(TOTAL|%|\[)/.test(val))) {
+            currentSection = val;
+            if (!sections[val]) sections[val] = [];
+            continue;
+        }
+
+        // Skip total / percentage / placeholder rows
+        if (!currentSection || SKIP_VALS.test(val)) continue;
+
+        sections[currentSection].push(val);
+        rowMap[`${currentSection}|${val}`] = r;
+    }
+
+    // Fill in any ROW_MAP entries missing from the live scan (safety net)
+    for (const [key, row] of Object.entries(ROW_MAP)) {
+        if (!rowMap[key]) rowMap[key] = row;
+    }
+
+    _sectionsCache     = { sections, rowMap };
+    _sectionsCachePath = filePath;
+    return _sectionsCache;
+}
+
+function bustSectionsCache() { _sectionsCache = null; }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // BUDGET_ROWS — Budget sheet row mapping
@@ -109,8 +172,17 @@ function getCellValue(cell) {
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
+// getRow: resolves section|category → row number.
+// Uses _sectionsCache.rowMap when available (includes custom filled-in rows),
+// falls back to static ROW_MAP.
+function getRow(section, category) {
+    const key = `${section}|${category}`;
+    if (_sectionsCache && _sectionsCache.rowMap[key]) return _sectionsCache.rowMap[key];
+    return ROW_MAP[key];
+}
+
 async function readMonthValue(month, section, category, day) {
-    const row = ROW_MAP[`${section}|${category}`];
+    const row = getRow(section, category);
     if (!row) return { error: `No mapping for ${section} / ${category}` };
     const col = getDayCol(month, day);
     if (!col) return { error: `Day ${day} invalid for ${month}` };
@@ -122,7 +194,7 @@ async function readMonthValue(month, section, category, day) {
 }
 
 async function writeMonthValue(month, section, category, day, amount) {
-    const row = ROW_MAP[`${section}|${category}`];
+    const row = getRow(section, category);
     if (!row) return { error: `No mapping for ${section} / ${category}` };
     const col = getDayCol(month, day);
     if (!col) return { error: `Day ${day} invalid for ${month} (max: ${MONTH_DAYS[month]})` };
@@ -157,7 +229,7 @@ function _parseCellParts(cell) {
 
 // Read existing cell value as formula parts (for conflict resolution)
 async function readMonthParts(month, section, category, day) {
-    const row = ROW_MAP[`${section}|${category}`];
+    const row = getRow(section, category);
     if (!row) return { error: `No mapping for ${section} / ${category}` };
     const col = getDayCol(month, day);
     if (!col) return { error: `Day ${day} invalid for ${month}` };
@@ -172,7 +244,7 @@ async function readMonthParts(month, section, category, day) {
 // asFormula=false → 1500  (plain numeric, sum of parts)
 // Single part always writes as plain number regardless of asFormula.
 async function writeMonthParts(month, section, category, day, parts, asFormula = true) {
-    const row = ROW_MAP[`${section}|${category}`];
+    const row = getRow(section, category);
     if (!row) return { error: `No mapping for ${section} / ${category}` };
     const col = getDayCol(month, day);
     if (!col) return { error: `Day ${day} invalid for ${month}` };
@@ -1407,7 +1479,7 @@ async function getDayReport(month, day) {
 module.exports = {
     MONTHS, MONTH_DAYS, BUDGET_ROWS,
     readMonthValue, writeMonthValue,
-    getSections,
+    getSections, loadSectionsFromExcel, bustSectionsCache,
     readMonthParts,  writeMonthParts,
     readBudgetParts, writeBudgetParts,
     getDayReport,

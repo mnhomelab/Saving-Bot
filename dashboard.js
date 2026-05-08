@@ -7,7 +7,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 const express = require('express');
-const { createEditorRouter } = require('./editor');
 const crypto  = require('crypto');
 const https   = require('https');
 
@@ -54,6 +53,11 @@ const state = {
 const tokenToNumber = new Map();   // token  → number
 const numberToToken = new Map();   // number → token
 const shortToToken  = new Map();   // code   → token
+// ── OTP store ─────────────────────────────────────────────────────────────────
+const otpStore = new Map();  // phone → { code, expires, attempts, lastSent }
+let _waClient  = null;
+function setClient(client) { _waClient = client; }
+function _cleanOtps() { const n=Date.now(); for(const[k,v]of otpStore) if(v.expires<n) otpStore.delete(k); }
 const shortUrlCache = new Map();   // code   → is.gd short URL
 
 // Sessions — long-lived (30 days)
@@ -227,9 +231,6 @@ function requireSession(req, res, next) {
 // ROUTES
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Wire spreadsheet editor routes
-createEditorRouter(app, requireSession);
-
 // GET /go/:code  — short link, resolves to full token then logs in
 app.get('/go/:code', (req, res) => {
     const token = shortToToken.get(req.params.code || '');
@@ -262,6 +263,72 @@ app.post('/login', (req, res) => {
     const sid = createSession(number);
     res.setHeader('Set-Cookie', `dsid=${sid}; HttpOnly; Path=/; Max-Age=${30 * 24 * 3600}`);
     res.redirect(next.startsWith('/') ? next : '/');
+});
+
+
+// ── POST /send-code ──────────────────────────────────────────────────────────
+app.post('/send-code', (req, res) => {  // no session required — IP rate-limited
+    _cleanOtps();
+    // IP-based rate limit: max 3 OTP requests per IP per 10 minutes
+    const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+    const ipKey = `ip:${ip}`;
+    const ipEntry = otpStore.get(ipKey);
+    if (ipEntry) {
+        if (ipEntry.count >= 3 && Date.now() - ipEntry.start < 10 * 60_000) {
+            return res.json({ ok: false, error: 'Too many requests from this IP. Try again later.' });
+        }
+        if (Date.now() - ipEntry.start >= 10 * 60_000) {
+            otpStore.delete(ipKey);
+        } else {
+            ipEntry.count++;
+        }
+    } else {
+        otpStore.set(ipKey, { count: 1, start: Date.now() });
+    }
+    const phone = (req.body.phone || '').replace(/\D/g,'').trim();
+    if (!phone) return res.json({ ok: false, error: 'Phone number required.' });
+    const whitelist = state.whitelist || [];
+    if (!whitelist.includes(phone)) return res.json({ ok: false, error: 'Number not in whitelist.' });
+    if (!_waClient || !_waClient.info) return res.json({ ok: false, error: 'Bot not connected.' });
+    const existing = otpStore.get(phone);
+    if (existing && Date.now() - existing.lastSent < 60_000) {
+        const wait = Math.ceil((60_000 - (Date.now() - existing.lastSent)) / 1000);
+        return res.json({ ok: false, error: `Wait ${wait}s before requesting another code.` });
+    }
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    otpStore.set(phone, { code, expires: Date.now() + 5*60_000, attempts: 0, lastSent: Date.now() });
+    _waClient.sendMessage(`${phone}@c.us`,
+        `🔐 *Saving Bot Dashboard*\n\nYour login code:\n\n*${code}*\n\n⏱ Expires in 5 minutes.\nDo not share this code.`
+    ).then(() => {
+        console.log(`🔐 OTP sent to ${phone}`);
+        res.json({ ok: true, message: `Code sent to ···${phone.slice(-4)}` });
+    }).catch(err => {
+        otpStore.delete(phone);
+        res.json({ ok: false, error: 'Failed to send WhatsApp message.' });
+    });
+});
+
+// ── POST /verify-code ─────────────────────────────────────────────────────────
+app.post('/verify-code', (req, res) => {
+    _cleanOtps();
+    const phone = (req.body.phone || '').replace(/\D/g,'').trim();
+    const code  = (req.body.code  || '').trim();
+    const next  = (req.body.next  || '/');
+    const entry = otpStore.get(phone);
+    if (!entry) return res.json({ ok: false, error: 'Code expired. Request a new one.' });
+    if (Date.now() > entry.expires) { otpStore.delete(phone); return res.json({ ok: false, error: 'Code expired.' }); }
+    entry.attempts++;
+    if (entry.attempts > 3) { otpStore.delete(phone); return res.json({ ok: false, error: 'Too many attempts. Request a new code.' }); }
+    if (entry.code !== code) return res.json({ ok: false, error: `Incorrect code. ${4 - entry.attempts} attempt(s) left.` });
+    otpStore.delete(phone);
+    const sid = createSession(phone);
+    res.setHeader('Set-Cookie', `dsid=${sid}; HttpOnly; Path=/; Max-Age=${30*24*3600}`);
+    res.json({ ok: true, redirect: next.startsWith('/') ? next : '/' });
+});
+
+// ── GET /api/otp-status ───────────────────────────────────────────────────────
+app.get('/api/otp-status', requireSession, (req, res) => {
+    res.json({ botConnected: !!(_waClient && _waClient.info) });
 });
 
 // Dashboard (protected)
@@ -298,65 +365,285 @@ app.get('/report', requireSession, async (_, res) => {
 
 function loginPage(error, next) {
     const errHtml = error === 'invalid'
-        ? `<div class="error">❌ Invalid token. Please check and try again.</div>`
-        : '';
-    return `<!DOCTYPE html><html><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Dashboard · Sign In</title>
-<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+        ? `<div class="msg err">❌ Invalid or expired token.</div>` : '';
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Saving Bot · Sign In</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'DM Mono',monospace;background:#0a0f1e;color:#e2e8f0;min-height:100vh;
-  display:flex;align-items:center;justify-content:center;padding:20px}
-body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
-  background:radial-gradient(ellipse 70% 50% at 50% -10%,#0f3460 0%,transparent 70%),
-             radial-gradient(ellipse 30% 30% at 85% 85%,#0f766e18 0%,transparent 60%)}
-.card{position:relative;z-index:1;background:rgba(255,255,255,.04);
-  border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:44px 36px;
-  max-width:400px;width:100%;backdrop-filter:blur(20px)}
-.icon{font-size:44px;text-align:center;margin-bottom:20px;display:block;
-  filter:drop-shadow(0 0 24px #0f766e88)}
-h2{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;text-align:center;margin-bottom:8px;
-  background:linear-gradient(135deg,#e2e8f0,#94d5cd);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.sub{text-align:center;color:#4b5563;font-size:12px;line-height:1.9;margin-bottom:28px}
-.sub code{background:#1e293b;color:#4ade80;padding:2px 8px;border-radius:4px;font-size:11px}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;
+     background:#0a0f1e;color:#e2e8f0;min-height:100vh;
+     display:flex;align-items:center;justify-content:center;padding:24px}
+body::before{content:'';position:fixed;inset:0;pointer-events:none;
+  background:radial-gradient(ellipse 80% 60% at 50% -5%,rgba(15,48,96,.8) 0%,transparent 65%),
+             radial-gradient(ellipse 30% 25% at 80% 80%,rgba(15,118,110,.1) 0%,transparent 60%)}
+.wrap{position:relative;z-index:1;width:100%;max-width:420px}
+.brand{text-align:center;margin-bottom:24px}
+.brand .icon{font-size:44px;display:block;margin-bottom:10px;
+  filter:drop-shadow(0 0 20px rgba(15,118,110,.5))}
+.brand h1{font-size:22px;font-weight:800;letter-spacing:-.4px;
+  background:linear-gradient(135deg,#e2e8f0 30%,#94d5cd);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.brand p{color:#374151;font-size:12px;margin-top:6px}
+.card{background:rgba(17,24,39,.7);border:1px solid rgba(255,255,255,.08);
+      border-radius:18px;overflow:hidden;backdrop-filter:blur(24px);
+      box-shadow:0 24px 64px rgba(0,0,0,.5)}
+/* Tabs */
+.tabs{display:flex;border-bottom:1px solid rgba(255,255,255,.06)}
+.tab{flex:1;padding:13px 8px;font-size:12px;font-weight:600;text-align:center;
+     cursor:pointer;color:#4b5563;background:transparent;border:none;
+     border-bottom:2px solid transparent;transition:all .2s;letter-spacing:.3px}
+.tab:hover:not(.active){color:#94a3b8}
+.tab.active{color:#4ade80;border-bottom-color:#4ade80;background:rgba(74,222,128,.04)}
+/* Panels */
+.panel{display:none;padding:28px}
+.panel.active{display:block}
+/* Form elements */
+.field{margin-bottom:16px}
 label{display:block;font-size:10px;color:#64748b;text-transform:uppercase;
-  letter-spacing:.8px;margin-bottom:8px;font-weight:500}
-input[type=text]{width:100%;background:#111827;border:1px solid rgba(255,255,255,.1);
-  border-radius:10px;padding:13px 14px;color:#e2e8f0;font-family:'DM Mono',monospace;
-  font-size:12px;outline:none;transition:border-color .2s;margin-bottom:14px;letter-spacing:.03em}
-input[type=text]:focus{border-color:#0f766e;box-shadow:0 0 0 3px rgba(15,118,110,.15)}
-input[type=text]::placeholder{color:#2d3748}
-button{width:100%;background:linear-gradient(135deg,#0f766e,#1e40af);border:none;
-  border-radius:10px;padding:13px;color:white;font-family:'Syne',sans-serif;
-  font-size:14px;font-weight:700;cursor:pointer;transition:opacity .15s;letter-spacing:.02em}
-button:hover{opacity:.87}
-button:active{opacity:.75}
-.error{background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.25);
-  color:#f87171;border-radius:10px;padding:11px 14px;font-size:12px;
-  margin-bottom:18px;text-align:center;line-height:1.5}
-.hint{text-align:center;font-size:11px;color:#374151;margin-top:18px;line-height:1.8}
-.hint span{color:#0f766e}
-</style></head><body>
-<div class="card">
-  <span class="icon">💰</span>
-  <h2>Saving Bot Dashboard</h2>
-  <p class="sub">
-    Send <code>Preview Dashboard</code> to the bot on WhatsApp<br>
-    to get your token, then paste it below.
-  </p>
-  ${errHtml}
-  <form method="POST" action="/login">
-    <input type="hidden" name="next" value="${next || '/'}">
-    <label>Your access token</label>
-    <input type="text" name="token" placeholder="Paste your token here…"
-           autocomplete="off" autocorrect="off" autocapitalize="off"
-           spellcheck="false" autofocus>
-    <button type="submit">Open Dashboard →</button>
-  </form>
-  <p class="hint">🔒 Only <span>whitelisted numbers</span> can access this dashboard.</p>
-</div></body></html>`;
+      letter-spacing:.8px;font-weight:600;margin-bottom:7px}
+input{width:100%;background:#111827;border:1px solid rgba(255,255,255,.09);
+      border-radius:10px;padding:12px 14px;color:#e2e8f0;
+      font-family:inherit;font-size:13px;outline:none;transition:border-color .2s}
+input:focus{border-color:#0f766e;box-shadow:0 0 0 3px rgba(15,118,110,.12)}
+input::placeholder{color:#1f2937}
+.btn{width:100%;border:none;border-radius:10px;padding:13px;color:#fff;
+     font-size:13px;font-weight:700;cursor:pointer;transition:all .2s;letter-spacing:.02em}
+.btn-primary{background:linear-gradient(135deg,#0f766e,#0c5a96)}
+.btn-primary:hover{opacity:.88;transform:translateY(-1px)}
+.btn-outline{background:rgba(15,118,110,.1);border:1px solid rgba(15,118,110,.3);
+             color:#4ade80;margin-bottom:10px}
+.btn-outline:hover{background:rgba(15,118,110,.2)}
+.btn:disabled{opacity:.38;cursor:not-allowed;transform:none!important}
+/* Messages */
+.msg{border-radius:9px;padding:10px 13px;font-size:12px;margin-bottom:16px;line-height:1.5}
+.msg.err{background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.2);color:#fca5a5}
+.msg.ok{background:rgba(74,222,128,.07);border:1px solid rgba(74,222,128,.18);color:#86efac}
+.msg.info{background:rgba(96,165,250,.07);border:1px solid rgba(96,165,250,.18);color:#93c5fd}
+/* Code input */
+.code-wrap{display:flex;gap:8px;align-items:center;margin-bottom:12px}
+.code-wrap input{flex:1;text-align:center;font-size:22px;letter-spacing:.3em;font-weight:700;
+                 font-family:'Courier New',monospace}
+.resend-btn{background:transparent;border:1px solid #1e293b;border-radius:8px;
+            color:#64748b;padding:10px 12px;font-size:11px;cursor:pointer;
+            white-space:nowrap;flex-shrink:0;transition:all .2s}
+.resend-btn:hover:not(:disabled){border-color:#0f766e;color:#4ade80}
+.resend-btn:disabled{opacity:.5;cursor:not-allowed}
+.hint{text-align:center;font-size:11px;color:#374151;margin-top:16px;line-height:1.8}
+.hint a{color:#0f766e;text-decoration:none}
+.phone-note{font-size:10px;color:#374151;margin-top:-11px;margin-bottom:14px;padding-left:2px}
+.divider{display:flex;align-items:center;gap:10px;margin:18px 0}
+.divider::before,.divider::after{content:'';flex:1;height:1px;background:rgba(255,255,255,.06)}
+.divider span{color:#374151;font-size:10px;letter-spacing:.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">
+    <span class="icon">💰</span>
+    <h1>Saving Bot</h1>
+    <p>Live Financial Dashboard</p>
+  </div>
+
+  <div class="card">
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('token')">🔑&nbsp; Access Token</button>
+      <button class="tab"        onclick="switchTab('otp')">📱&nbsp; WhatsApp Code</button>
+    </div>
+
+    <!-- ── Token panel ──────────────────────────────────────────────── -->
+    <div class="panel active" id="panel-token">
+      ${errHtml}
+      <form method="POST" action="/login" autocomplete="off">
+        <input type="hidden" name="next" value="${next || '/'}">
+        <div class="field">
+          <label>Access Token</label>
+          <input type="text" name="token" id="tokenInput"
+                 placeholder="Paste your token here…"
+                 autocomplete="off" autocorrect="off" spellcheck="false">
+        </div>
+        <button class="btn btn-primary" type="submit">Sign In →</button>
+      </form>
+      <p class="hint">
+        Don't have a token?<br>
+        Send <a href="#">Preview Dashboard</a> on WhatsApp to get one,<br>
+        or use the <strong>WhatsApp Code</strong> tab.
+      </p>
+    </div>
+
+    <!-- ── OTP panel ────────────────────────────────────────────────── -->
+    <div class="panel" id="panel-otp">
+      <div id="otp-msg"></div>
+
+      <!-- Step 1 — always visible -->
+      <div id="step1">
+        <div class="field">
+          <label>Your whitelisted phone number</label>
+          <input type="tel" id="otp-phone" inputmode="numeric"
+                 placeholder="e.g. 923111234567"
+                 autocomplete="off">
+          <p class="phone-note">Include country code, no spaces or + symbol</p>
+        </div>
+        <button class="btn btn-outline" id="send-btn" onclick="sendCode()">
+          📤 Send Code via WhatsApp
+        </button>
+      </div>
+
+      <!-- Step 2 — appears after code is sent, stays visible -->
+      <div id="step2-wrap" style="display:none">
+        <div class="divider"><span>ENTER CODE</span></div>
+        <div class="field">
+          <label>6-digit code from WhatsApp</label>
+          <div class="code-wrap">
+            <input type="number" id="otp-code" inputmode="numeric"
+                   maxlength="6" placeholder="• • • • • •"
+                   autocomplete="one-time-code">
+            <button class="resend-btn" id="resend-btn" disabled onclick="handleResend()">
+              <span id="resend-label">60s</span>
+            </button>
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="verifyCode()">Verify &amp; Sign In →</button>
+      </div>
+
+      <p class="hint">Only <a href="#">whitelisted numbers</a> can receive a code.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+var NEXT = ${JSON.stringify(next || '/')};
+var otpPhone = '';
+var resendTimer = null;
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  document.querySelectorAll('.tab').forEach(function(t, i) {
+    t.classList.toggle('active', (tab === 'token') ? i === 0 : i === 1);
+  });
+  document.getElementById('panel-token').classList.toggle('active', tab === 'token');
+  document.getElementById('panel-otp').classList.toggle('active', tab === 'otp');
+  if (tab === 'token') document.getElementById('tokenInput').focus();
+  if (tab === 'otp')   document.getElementById('otp-phone').focus();
 }
+
+// ── Message helper ────────────────────────────────────────────────────────────
+function showMsg(text, type) {
+  var el = document.getElementById('otp-msg');
+  el.innerHTML = text
+    ? '<div class="msg ' + type + '">' + text + '</div>'
+    : '';
+}
+
+// ── Send OTP ──────────────────────────────────────────────────────────────────
+async function sendCode() {
+  var phone = (document.getElementById('otp-phone').value || '')
+                .replace(/\D/g, '').trim();
+  if (phone.length < 7) { showMsg('Enter a valid phone number.', 'err'); return; }
+  var btn = document.getElementById('send-btn');
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+  showMsg('', '');
+  try {
+    var r = await fetch('/send-code', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: phone })
+    });
+    var d = await r.json();
+    if (d.ok) {
+      otpPhone = phone;
+      showMsg('✅ ' + d.message + '. Enter the code below.', 'ok');
+      document.getElementById('step2-wrap').style.display = '';
+      document.getElementById('otp-code').focus();
+      btn.textContent = '📤 Resend Code';
+      startResendCountdown();
+    } else {
+      showMsg('❌ ' + d.error, 'err');
+      btn.disabled = false;
+      btn.textContent = '📤 Send Code via WhatsApp';
+    }
+  } catch(e) {
+    showMsg('❌ Network error — try again.', 'err');
+    btn.disabled = false;
+    btn.textContent = '📤 Send Code via WhatsApp';
+  }
+}
+
+// ── Verify OTP ────────────────────────────────────────────────────────────────
+async function verifyCode() {
+  var code = (document.getElementById('otp-code').value || '').trim();
+  if (code.length !== 6) { showMsg('Enter the 6-digit code.', 'err'); return; }
+  showMsg('Verifying…', 'info');
+  try {
+    var r = await fetch('/verify-code', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: otpPhone, code: code, next: NEXT })
+    });
+    var d = await r.json();
+    if (d.ok) {
+      showMsg('✅ Verified! Redirecting…', 'ok');
+      window.location.href = d.redirect || '/';
+    } else {
+      showMsg('❌ ' + d.error, 'err');
+    }
+  } catch(e) {
+    showMsg('❌ Network error — try again.', 'err');
+  }
+}
+
+// ── Resend countdown (60s) ────────────────────────────────────────────────────
+function startResendCountdown() {
+  clearInterval(resendTimer);
+  var rb = document.getElementById('resend-btn');
+  var rl = document.getElementById('resend-label');
+  rb.disabled = true;
+  var t = 60;
+  rl.textContent = t + 's';
+  resendTimer = setInterval(function() {
+    t--;
+    if (t <= 0) {
+      clearInterval(resendTimer);
+      rb.disabled = false;
+      rl.textContent = 'Resend';
+    } else {
+      rl.textContent = t + 's';
+    }
+  }, 1000);
+}
+
+function handleResend() {
+  var rb = document.getElementById('resend-btn');
+  rb.disabled = true;
+  document.getElementById('resend-label').textContent = '…';
+  document.getElementById('send-btn').click();
+}
+
+// ── Enter key ─────────────────────────────────────────────────────────────────
+document.addEventListener('keydown', function(e) {
+  if (e.key !== 'Enter') return;
+  var otpActive = document.getElementById('panel-otp').classList.contains('active');
+  if (!otpActive) return;
+  var step2Visible = document.getElementById('step2-wrap').style.display !== 'none';
+  if (document.activeElement === document.getElementById('otp-phone') || !step2Visible) {
+    sendCode();
+  } else {
+    verifyCode();
+  }
+});
+
+// Auto-focus
+document.getElementById('tokenInput').focus();
+</script>
+</body>
+</html>`;
+}
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HTML — DASHBOARD
@@ -469,6 +756,37 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
   <div class="block">
     <div class="block-head"><span class="block-title">🔒 Whitelisted Numbers</span><span class="block-badge" id="b-wl-count">—</span></div>
     <div class="block-body"><div class="chips" id="b-whitelist"></div></div>
+  </div>
+
+  <!-- OTP Code Panel -->
+  <div class="block">
+    <div class="block-head"><span class="block-title">📱 Send Dashboard Code</span><span class="block-badge" id="otp-badge" style="background:rgba(15,118,110,.2);color:#4ade80">WhatsApp OTP</span></div>
+    <div class="block-body" style="padding:14px">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Send a 6-digit login code to any whitelisted number via WhatsApp.</div>
+      <div id="otp-msg" style="margin-bottom:10px"></div>
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <input id="otp-dash-phone" type="tel" inputmode="numeric" placeholder="Phone number (e.g. 923111234567)"
+               style="flex:1;background:#111827;border:1px solid #2d3f5e;border-radius:7px;padding:8px 10px;color:#e2e8f0;font-size:12px;outline:none;font-family:monospace"
+               onkeydown="if(event.key==='Enter')sendDashOtp()">
+        <button onclick="sendDashOtp()" id="otp-dash-btn"
+                style="background:#0f766e;border:none;border-radius:7px;color:#fff;padding:8px 14px;font-size:12px;cursor:pointer;font-weight:600;white-space:nowrap">
+          Send Code
+        </button>
+      </div>
+      <div id="otp-code-row" style="display:none;gap:8px;align-items:center">
+        <input id="otp-dash-code" type="number" inputmode="numeric" maxlength="6" placeholder="Enter 6-digit code"
+               style="flex:1;background:#111827;border:1px solid #2d3f5e;border-radius:7px;padding:8px 10px;color:#e2e8f0;font-size:14px;font-weight:700;letter-spacing:.2em;text-align:center;outline:none;font-family:monospace;width:160px"
+               onkeydown="if(event.key==='Enter')verifyDashOtp()">
+        <button onclick="verifyDashOtp()" id="otp-verify-btn"
+                style="background:#1e40af;border:none;border-radius:7px;color:#fff;padding:8px 14px;font-size:12px;cursor:pointer;font-weight:600;white-space:nowrap">
+          Verify
+        </button>
+        <button onclick="resetOtpForm()"
+                style="background:transparent;border:1px solid #374151;border-radius:7px;color:#64748b;padding:8px 10px;font-size:11px;cursor:pointer">
+          ↩
+        </button>
+      </div>
+    </div>
   </div>
   <div class="block">
     <div class="block-head">
@@ -761,7 +1079,7 @@ function stopDashboard() {
 }
 
 module.exports = {
-    startDashboard, stopDashboard, isRunning,
+    startDashboard, stopDashboard, isRunning, setClient,
     generateToken,  generateShortLink, getRawToken, revokeToken,
     setBotOnline,   setWhitelist,  setSchedules,
     setMonthSummary, logActivity,

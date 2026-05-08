@@ -162,13 +162,16 @@ async function loadSectionsFromExcel() {
 
             for (const { offset, templateName } of cats) {
                 const janRow  = baseRow + offset;
-                const liveRaw = janWs.getCell(janRow, 1).value;
-                const liveName = (typeof liveRaw === 'string' && liveRaw.trim() && !SC_PLACEHOLDER.test(liveRaw.trim()))
-                                 ? liveRaw.trim()
-                                 : null;
-                const finalName = liveName || templateName;
+                // SC name is authoritative. Only read Jan live name if SC has a placeholder.
+                let finalName = templateName;
+                if (SC_PLACEHOLDER.test(templateName)) {
+                    const liveRaw = janWs.getCell(janRow, 1).value;
+                    finalName = (typeof liveRaw === 'string' && liveRaw.trim() && !SC_PLACEHOLDER.test(liveRaw.trim()))
+                                ? liveRaw.trim()
+                                : null;
+                }
 
-                if (SC_PLACEHOLDER.test(finalName)) continue;  // still unfilled placeholder
+                if (!finalName || SC_PLACEHOLDER.test(finalName)) continue;  // unfilled placeholder
 
                 if (!sections[sectionName].includes(finalName)) {
                     sections[sectionName].push(finalName);

@@ -7,7 +7,7 @@ const dashboard = require('./dashboard');
 const { getActiveYear, setActiveYear, getExcelPath, isSchedulerStopped, stopSchedulerForNumber, startSchedulerForNumber } = require('./config');
 const {
     MONTHS, MONTH_DAYS, BUDGET_ROWS,
-    getSections, loadSectionsFromExcel,
+    getSections, loadSectionsFromExcel, bustSectionsCache,
     readMonthValue, writeMonthValue,
     readMonthParts,  writeMonthParts,
     readBudgetParts, writeBudgetParts,
@@ -460,6 +460,7 @@ async function handleMessage(phone, text) {
         const yr = parseInt(text.trim(), 10);
         if (isNaN(yr) || yr < 2024 || yr > 2099) return `⚠️ Enter a valid year (e.g. *2026*).`;
         setActiveYear(yr);
+        bustSectionsCache(); refreshSections(); // reload sections from new year file
         setState(phone, 'main_menu');
         return [
             `✅ *Active year set to ${yr}*`,

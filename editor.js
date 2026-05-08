@@ -26,7 +26,37 @@
 const path   = require('path');
 const fs     = require('fs');
 const crypto = require('crypto');
+const https  = require('https');
 const { YEAR_FOLDER } = require('./config');
+
+// ── Auto-detect public IP (used as fallback for ONLYOFFICE_DS_URL) ────────────
+let _detectedIp = null;
+
+function detectPublicIp() {
+    return new Promise(resolve => {
+        https.get('https://api.ipify.org', res => {
+            let d = '';
+            res.on('data', c => d += c);
+            res.on('end', () => resolve(d.trim()));
+        }).on('error', () => resolve(null));
+    });
+}
+
+// Kick off detection immediately at module load; result cached in _detectedIp
+detectPublicIp().then(ip => {
+    if (ip) {
+        _detectedIp = ip;
+        console.log(`🌐 Editor: detected public IP → ${ip}`);
+    } else {
+        console.warn('⚠️  Editor: could not detect public IP — set ONLYOFFICE_DS_URL in .env');
+    }
+});
+
+function getDsUrl() {
+    if (process.env.ONLYOFFICE_DS_URL) return process.env.ONLYOFFICE_DS_URL.replace(/\/$/, '');
+    if (_detectedIp) return `http://${_detectedIp}:8080`;
+    return 'http://localhost:8080'; // last-resort fallback
+}
 
 // ── Backup directory ──────────────────────────────────────────────────────────
 const BACKUP_DIR = path.join(YEAR_FOLDER, 'backups');
@@ -120,8 +150,8 @@ function createEditorRouter(app, requireSession) {
         if (!file || !fs.existsSync(filePath))
             return res.json({ ok: false, error: 'File not found' });
 
-        const DS_URL  = (process.env.ONLYOFFICE_DS_URL  || 'http://localhost:8080').replace(/\/$/, '');
-        const BOT_URL = (process.env.BOT_CALLBACK_HOST  || `http://localhost:${process.env.DASHBOARD_PORT || 3001}`).replace(/\/$/, '');
+        const DS_URL  = getDsUrl();
+        const BOT_URL = (process.env.BOT_CALLBACK_HOST || `http://localhost:${process.env.DASHBOARD_PORT || 3001}`).replace(/\/$/, '');
 
         const config = {
             document: {
@@ -345,16 +375,24 @@ async function load(){
     const banner=document.getElementById('banner');
     const grid=document.getElementById('grid');
     try {
-        const r=await fetch('/api/edit/files');
-        const d=await r.json();
+        const [fr, cr] = await Promise.all([
+            fetch('/api/edit/files'),
+            fetch('/api/edit/config?file=_probe')   // just to get dsUrl
+        ]);
+        const d  = await fr.json();
+        const dc = await cr.json().catch(()=>({}));
+        const dsUrl = dc.dsUrl || '';
+
         if(!d.ok||!d.files.length){
             grid.innerHTML='<div class="state"><div style="font-size:40px">📭</div><div>No xlsx files found in Saving-Year/</div></div>';
             banner.className='banner info';
-            banner.innerHTML='📁 No files found. Create a year file via WhatsApp first.';
+            banner.innerHTML='📁 No files found. Create a year file via WhatsApp first.'
+                + (dsUrl ? ' · <span style="opacity:.7">DS: '+esc(dsUrl)+'</span>' : '');
             return;
         }
         banner.className='banner ok';
-        banner.innerHTML='✅ '+d.files.length+' file'+(d.files.length!==1?'s':'')+' found — click <strong>Open in OnlyOffice</strong> to start editing';
+        banner.innerHTML='✅ '+d.files.length+' file'+(d.files.length!==1?'s':'')+' found — click <strong>Open in OnlyOffice</strong> to edit'
+            + (dsUrl ? ' &nbsp;·&nbsp; <span style="opacity:.75;font-size:11px">DS: '+esc(dsUrl)+'</span>' : '');
         grid.innerHTML=d.files.map(f=>\`
 <div class="card">
   <div class="card-top">

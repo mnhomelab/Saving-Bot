@@ -36,7 +36,11 @@ async function refreshSections() {
         SECTIONS      = sections;
         SECTION_NAMES = Object.keys(sections);
         _liveRowMap   = rowMap;
-    } catch { /* keep static fallback */ }
+        const total = Object.values(sections).reduce((s, c) => s + c.length, 0);
+        console.log(`📋 Sections refreshed: ${SECTION_NAMES.length} sections, ${total} categories (from live Excel)`);
+    } catch (e) {
+        console.log('⚠️  Section refresh failed, using ROW_MAP fallback:', e.message);
+    }
 }
 refreshSections(); // fire once at startup
 

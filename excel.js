@@ -71,65 +71,87 @@ function getSections() {
     return out;
 }
 
-// ── Live sections from Saving-<Year>.xlsx — includes custom filled-in rows ────
-// Reads a month worksheet (Jan sheet) and parses section headers + categories.
-// Returns { sections: {...}, rowMap: { "Section|Category": rowNum, ... } }
-// Cache is busted on every new year file load.
+// ── Live sections from Saving-<Year>.xlsx — ROW_MAP-addressed live name reader ──
+// Uses ROW_MAP row numbers as the exact cell address. Reads the actual cell
+// value from the live year file so renamed <Name-Of-Entry> placeholders appear.
+// If a cell is blank/placeholder/non-string it falls back to the ROW_MAP key name.
+// This approach never breaks due to formula cells, merged cells, or structural changes.
 
 let _sectionsCache     = null;
 let _sectionsCachePath = '';
-
-const SECTION_HEADERS = new Set([
-    'INCOME','Petty Cash Used','SAVINGS EXPENSE','HOME EXPENSES','DAILY LIVING',
-    'CHILDREN','TRANSPORTATION','HEALTH','EDUCATION','CHARITY/GIFTS','OBLIGATIONS',
-    'ENTERTAINMENT','SUBSCRIPTIONS','VACATION','MISCELLANEOUS'
-]);
-const SKIP_VALS = /^(Total|%\s*of|<Name-Of-Entry>|\[|Summary|Total Per Day|By$)/i;
-const MAX_DATA_ROW = 165; // rows beyond this are summaries, not categories
 
 async function loadSectionsFromExcel() {
     const filePath = getExcelPath();
     if (_sectionsCache && _sectionsCachePath === filePath) return _sectionsCache;
 
-    const wb = new ExcelJS.Workbook();
-    try { await wb.xlsx.readFile(filePath); }
-    catch { return { sections: getSections(), rowMap: ROW_MAP }; }
+    const PLACEHOLDER = /^<Name-Of-Entry>$/i;
+    const out = {};    // { section: [catName, ...] }
+    const rowMap = {}; // { "Section|Category": rowNum }
 
-    // Use the Jan sheet (abbreviated month name) as the structure template
-    const ws = wb.getWorksheet('Jan');
-    if (!ws) return { sections: getSections(), rowMap: ROW_MAP };
+    try {
+        const wb = new ExcelJS.Workbook();
+        await wb.xlsx.readFile(filePath);
 
-    const sections = {};
-    const rowMap   = {};
-    let   currentSection = null;
+        // Try abbreviated sheet name first (template uses 'Jan'), then full name
+        const SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        const FULL  = MONTHS.map(m => m.slice(0,3));  // 'Jan','Feb'... same as SHORT for ExcelJS
+        const ws    = wb.getWorksheet('Jan') || wb.getWorksheet('January') || wb.getWorksheet(MONTHS[0]);
 
-    for (let r = 1; r <= MAX_DATA_ROW; r++) {
-        const raw = ws.getCell(r, 1).value;
-        if (!raw || typeof raw !== 'string') continue;
-        const val = raw.trim();
-        if (!val) continue;
+        if (ws) {
+            for (const [key, row] of Object.entries(ROW_MAP)) {
+                const pipe     = key.indexOf('|');
+                const section  = key.slice(0, pipe);
+                const fallback = key.slice(pipe + 1);
 
-        // Detect section header
-        if (SECTION_HEADERS.has(val) ||
-            (val === val.toUpperCase() && val.length > 2 && !/^(TOTAL|%|\[)/.test(val))) {
-            currentSection = val;
-            if (!sections[val]) sections[val] = [];
-            continue;
+                const cell  = ws.getCell(row, 1);
+                const raw   = cell && cell.value != null ? cell.value : null;
+                // Accept only non-empty plain strings that aren't placeholders
+                const live  = (typeof raw === 'string' && raw.trim() && !PLACEHOLDER.test(raw.trim()))
+                              ? raw.trim()
+                              : null;
+
+                // Use live name if available, otherwise fall back to hardcoded name
+                const name  = live || fallback;
+
+                // Skip if still a placeholder
+                if (PLACEHOLDER.test(name)) continue;
+
+                if (!out[section]) out[section] = [];
+                // Avoid duplicate category names within the same section
+                if (!out[section].includes(name)) {
+                    out[section].push(name);
+                    rowMap[`${section}|${name}`] = row;
+                }
+            }
+        } else {
+            // Fallback: derive from ROW_MAP keys
+            for (const [key, row] of Object.entries(ROW_MAP)) {
+                const pipe    = key.indexOf('|');
+                const section = key.slice(0, pipe);
+                const cat     = key.slice(pipe + 1);
+                if (!out[section]) out[section] = [];
+                out[section].push(cat);
+                rowMap[key] = row;
+            }
         }
-
-        // Skip total / percentage / placeholder rows
-        if (!currentSection || SKIP_VALS.test(val)) continue;
-
-        sections[currentSection].push(val);
-        rowMap[`${currentSection}|${val}`] = r;
+    } catch (e) {
+        // File not found or unreadable — derive from ROW_MAP keys
+        for (const [key, row] of Object.entries(ROW_MAP)) {
+            const pipe    = key.indexOf('|');
+            const section = key.slice(0, pipe);
+            const cat     = key.slice(pipe + 1);
+            if (!out[section]) out[section] = [];
+            out[section].push(cat);
+            rowMap[key] = row;
+        }
     }
 
-    // Fill in any ROW_MAP entries missing from the live scan (safety net)
-    for (const [key, row] of Object.entries(ROW_MAP)) {
-        if (!rowMap[key]) rowMap[key] = row;
+    // Patch ROW_MAP with live names so write functions work without changes
+    for (const [key, row] of Object.entries(rowMap)) {
+        if (!ROW_MAP[key]) ROW_MAP[key] = row;
     }
 
-    _sectionsCache     = { sections, rowMap };
+    _sectionsCache     = { sections: out, rowMap };
     _sectionsCachePath = filePath;
     return _sectionsCache;
 }

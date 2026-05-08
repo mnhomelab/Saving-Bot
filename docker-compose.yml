@@ -1,20 +1,72 @@
+networks:
+  bot-net:
+    driver: bridge
+
 services:
+
+  # ── OnlyOffice Document Server ──────────────────────────────────────────────
+  # Full-featured spreadsheet / document editor served via browser.
+  # Browser accesses it at http://YOUR_SERVER_IP:8080
+  # The bot container accesses it via Docker network as http://onlyoffice-ds:80
+  onlyoffice-ds:
+    image: onlyoffice/documentserver:latest
+    container_name: onlyoffice-ds
+    restart: unless-stopped
+    networks:
+      - bot-net
+    ports:
+      - "8080:80"             # browser-facing port; change left side if 8080 is taken
+    environment:
+      - JWT_ENABLED=false     # set to true and add JWT_SECRET=<secret> for production
+      # - JWT_SECRET=change-me-in-production
+    volumes:
+      - onlyoffice-data:/var/www/onlyoffice/Data
+      - onlyoffice-logs:/var/log/onlyoffice
+      - onlyoffice-db:/var/lib/postgresql
+      - onlyoffice-rabbitmq:/var/lib/rabbitmq
+      - onlyoffice-redis:/var/lib/redis
+    # First boot takes 60-120 s while DS initialises its database — be patient
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+  # ── Saving Bot ───────────────────────────────────────────────────────────────
   saving-bot-v0.1:
     image: node:20-slim
     container_name: saving-bot-v0.1
     restart: unless-stopped
     working_dir: /app
+    networks:
+      - bot-net
     ports:
-      - "3001:3001"                     # Dashboard port
+      - "3001:3001"                     # Dashboard + editor port
     volumes:
       - .:/app                          # bot source code + session
-      - ./Saving-Year:/app/Saving-Year  # explicit separate mount — survives any container ops
+      - ./Saving-Year:/app/Saving-Year  # year files — survives container wipes
     env_file:
       - .env
     environment:
       - PUPPETEER_SKIP_DOWNLOAD=true
     command: >
-      sh -c "rm -f /app/session/session/SingletonLock /app/session/session/SingletonCookie /app/session/session/SingletonSocket && apt-get update -qq && apt-get install -y -qq chromium && npm install --quiet && node bot.js"
-    # Chromium lock files are cleared on every start — self-heals after crashes
-    # Saving-Year/ is mounted separately — files are safe even if session/ is wiped
-    # All config loaded from .env file
+      sh -c "rm -f /app/session/session/SingletonLock
+                   /app/session/session/SingletonCookie
+                   /app/session/session/SingletonSocket
+             && apt-get update -qq
+             && apt-get install -y -qq chromium
+             && npm install --quiet
+             && node bot.js"
+    depends_on:
+      onlyoffice-ds:
+        condition: service_healthy
+
+# ── Persistent volumes for OnlyOffice DS ──────────────────────────────────────
+# These keep DS state (fonts, config, PostgreSQL data) across container restarts.
+volumes:
+  onlyoffice-data:
+  onlyoffice-logs:
+  onlyoffice-db:
+  onlyoffice-rabbitmq:
+  onlyoffice-redis:

@@ -333,7 +333,7 @@ function createEditorRouter(app, requireSession) {
 
 // ── Editor HTML page ──────────────────────────────────────────────────────────
 function editorHtml() { return `<!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -341,121 +341,171 @@ function editorHtml() { return `<!DOCTYPE html>
 
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   LIGHT MODE  (matches Template.xlsx exactly)
+   Colors from xl/theme/theme1.xml:
+     #26aa26 accent3 = INCOME green    #3a5d9c accent1 = SAVINGS navy
+     #e68422 accent5 = orange          #ffc000 = amber summary
+     #ed214a = red goal banner         #ffff00 = yellow balance
+   ════════════════════════════════════════════════════════════════════════════ */
 :root{
-  /* ── Template.xlsx-matched light theme ──────────────────────────────────
-     Colors resolved from xl/theme/theme1.xml in the actual workbook:
-       accent3 #26aa26 = INCOME green  |  accent1 #3a5d9c = navy sections
-       accent5 #e68422 = orange        |  #ffc000 = amber summary row
-       dk1 #000000 = default text      |  lt1 #ffffff = text on dark headers  */
-  --bg:#f0eeea;           /* warm off-white — matches lt2 cream outside cells  */
-  --surface:#ffffff;      /* toolbar / panel background                         */
-  --surface2:#f4f2ee;     /* secondary surface                                  */
-  --border:#c8c4bb;       /* grid lines & panel borders                         */
-  --text:#000000;         /* dk1 — default cell text matches template           */
-  --muted:#6b6560;        /* secondary labels                                   */
-  --muted2:#958f88;       /* tertiary labels                                    */
-  --accent:#26aa26;       /* accent3 green = INCOME — primary UI accent         */
-  --accent2:#3a5d9c;      /* accent1 navy  = section headers                    */
-  --sel:rgba(58,93,156,.15); /* navy tint selection highlight                   */
-  --cell-bg:#ffffff;      /* data cells: white, same as unfilled Excel cells    */
-  --hdr-bg:#e8e5de;       /* row/col number headers: warm gray (Excel-style)    */
-  --hdr-border:#bbb5aa;   /* header border                                      */
+  --bg:#f0eeea;
+  --surface:#ffffff;
+  --surface2:#f4f2ee;
+  --border:#c8c4bb;
+  --text:#000000;
+  --muted:#6b6560;
+  --muted2:#958f88;
+  --accent:#26aa26;
+  --accent2:#3a5d9c;
+  --sel:rgba(58,93,156,.18);
+  --cell-bg:#ffffff;
+  --hdr-bg:#e8e5de;
+  --hdr-border:#bbb5aa;
+  --fbar-bg:#f9f7f3;
+  --tab-bar:#dedad4;
+  --tab-inactive:#cdc9c1;
+  --tab-border:#bbb5aa;
+  --grid-line:#d0ccc5;
+  --cell-hover:rgba(58,93,156,.06);
+  --toast-ok-bg:#eefaee;--toast-ok-border:#26aa26;--toast-ok-text:#1a6e1a;
+  --toast-err-bg:#fff0f0;--toast-err-border:#c04e4e;--toast-err-text:#7a1c1c;
+  --fml-color:#1d6b1d;
 }
-html,body{height:100%;background:var(--bg);color:var(--text);font-family:Calibri,'Segoe UI',Arial,sans-serif;overflow:hidden}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   DARK MODE  (default)
+   Chrome goes dark; vivid Excel colours (green/navy/orange/amber/yellow/red)
+   are kept as-is — they pop beautifully on the dark canvas.
+   Light-tinted alternating rows (very pale green/blue/orange) are darkened
+   so they stay visible without washing out the dark bg.
+   ════════════════════════════════════════════════════════════════════════════ */
+[data-theme="dark"]{
+  --bg:#0d1117;
+  --surface:#161b22;
+  --surface2:#1f2937;
+  --border:#30363d;
+  --text:#e6edf3;
+  --muted:#7d8590;
+  --muted2:#6e7681;
+  --accent:#26aa26;
+  --accent2:#6699d9;
+  --sel:rgba(88,149,235,.22);
+  --cell-bg:#0d1117;
+  --hdr-bg:#161b22;
+  --hdr-border:#21262d;
+  --fbar-bg:#0d1117;
+  --tab-bar:#161b22;
+  --tab-inactive:#1f2937;
+  --tab-border:#30363d;
+  --grid-line:#21262d;
+  --cell-hover:rgba(88,149,235,.08);
+  --toast-ok-bg:#0d2010;--toast-ok-border:#26aa26;--toast-ok-text:#4ade80;
+  --toast-err-bg:#1f0808;--toast-err-border:#c04e4e;--toast-err-text:#fca5a5;
+  --fml-color:#4ade80;
+}
+
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:Calibri,'Segoe UI',Arial,sans-serif;overflow:hidden;transition:background .2s,color .2s}
 
 /* ── Toolbar ── */
-.toolbar{background:var(--surface);border-bottom:2px solid var(--border);padding:6px 12px;display:flex;align-items:center;gap:10px;flex-shrink:0;z-index:100;box-shadow:0 1px 4px rgba(0,0,0,.08)}
-.toolbar-title{font-size:13px;font-weight:700;color:var(--accent2);margin-right:4px}
-select{background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:4px 10px;font-size:12px;outline:none;cursor:pointer;font-family:inherit}
-select:focus{border-color:var(--accent2);box-shadow:0 0 0 2px rgba(58,93,156,.15)}
+.toolbar{background:var(--surface);border-bottom:2px solid var(--border);padding:6px 12px;display:flex;align-items:center;gap:10px;flex-shrink:0;z-index:100;box-shadow:0 1px 4px rgba(0,0,0,.15)}
+.toolbar-title{font-size:13px;font-weight:700;color:var(--accent);margin-right:4px}
+select{background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:4px 10px;font-size:12px;outline:none;cursor:pointer;font-family:inherit;transition:background .2s,border-color .2s}
+select:focus{border-color:var(--accent2);box-shadow:0 0 0 2px rgba(88,149,235,.15)}
 .sep{width:1px;height:20px;background:var(--border)}
 .tag{background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:3px 8px;font-size:11px;color:var(--muted)}
 .btn{background:var(--accent2);border:none;border-radius:4px;color:#fff;padding:5px 12px;font-size:12px;cursor:pointer;transition:opacity .15s;font-weight:600;font-family:inherit}
 .btn:hover{opacity:.88}
 .btn.sec{background:var(--surface2);color:var(--text);border:1px solid var(--border)}
 .btn.sec:hover{border-color:var(--accent2);color:var(--accent2)}
+/* Theme toggle button */
+#themeBtn{background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:5px 11px;font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap;transition:all .15s}
+#themeBtn:hover{border-color:var(--accent2);color:var(--accent2)}
 
 /* ── Formula bar ── */
-.fbar{background:#f9f7f3;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;padding:3px 10px;flex-shrink:0}
+.fbar{background:var(--fbar-bg);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;padding:3px 10px;flex-shrink:0;transition:background .2s}
 .cell-ref{background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:3px 10px;min-width:64px;text-align:center;font-family:monospace;font-size:12px;color:var(--accent2);font-weight:700}
 .fx-label{color:var(--muted);font-size:12px;font-style:italic;padding:0 4px}
 .fbar-input{flex:1;background:transparent;border:none;color:var(--text);font-family:monospace;font-size:12px;outline:none;padding:3px 6px}
-.fbar-input:focus{background:rgba(58,93,156,.06);border-radius:3px}
+.fbar-input:focus{background:rgba(88,149,235,.06);border-radius:3px}
 
 /* ── Layout ── */
 .layout{display:flex;flex-direction:column;height:100vh}
 .grid-outer{flex:1;overflow:auto;position:relative;background:var(--bg)}
 .grid-outer::-webkit-scrollbar{width:10px;height:10px}
 .grid-outer::-webkit-scrollbar-track{background:var(--surface2)}
-.grid-outer::-webkit-scrollbar-thumb{background:#c0bab2;border-radius:4px}
-.grid-outer::-webkit-scrollbar-thumb:hover{background:#a8a096}
-/* Sheet tabs — match Excel tab bar */
-.tabbar{background:#dedad4;border-top:1px solid var(--border);display:flex;overflow-x:auto;flex-shrink:0;scrollbar-width:thin;padding:4px 4px 0;gap:2px}
+.grid-outer::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+.grid-outer::-webkit-scrollbar-thumb:hover{background:var(--muted)}
+
+/* Sheet tabs — match Excel look */
+.tabbar{background:var(--tab-bar);border-top:1px solid var(--border);display:flex;overflow-x:auto;flex-shrink:0;scrollbar-width:thin;padding:4px 4px 0;gap:2px}
 .tabbar::-webkit-scrollbar{height:4px}
-.tabbar::-webkit-scrollbar-thumb{background:#bbb5aa}
-.tab{background:#cdc9c1;color:var(--muted);padding:5px 16px;border-radius:4px 4px 0 0;font-size:11px;cursor:pointer;white-space:nowrap;border:1px solid var(--hdr-border);border-bottom:none;transition:all .15s;user-select:none;font-family:inherit}
-.tab:hover{background:#e8e5de;color:var(--text)}
-.tab.active{background:#ffffff;color:var(--accent2);border-color:var(--border);font-weight:700}
+.tabbar::-webkit-scrollbar-thumb{background:var(--border)}
+.tab{background:var(--tab-inactive);color:var(--muted);padding:5px 16px;border-radius:4px 4px 0 0;font-size:11px;cursor:pointer;white-space:nowrap;border:1px solid var(--tab-border);border-bottom:none;transition:all .15s;user-select:none;font-family:inherit}
+.tab:hover{background:var(--surface2);color:var(--text)}
+.tab.active{background:var(--surface);color:var(--accent2);border-color:var(--border);font-weight:700}
 
 /* ── Grid table ── */
 table{border-collapse:collapse;font-size:12px;font-family:Calibri,'Segoe UI',Arial,sans-serif}
 
-/* Column header (A B C …) — Excel-style warm gray */
+/* Column header (A B C …) */
 .ch{background:var(--hdr-bg);color:var(--muted);text-align:center;font-size:10px;font-weight:600;
     padding:2px 0;position:sticky;top:0;z-index:20;user-select:none;
-    border:1px solid var(--hdr-border);white-space:nowrap}
-/* Row number cell */
+    border:1px solid var(--hdr-border);white-space:nowrap;transition:background .2s}
+/* Row number */
 .rn{background:var(--hdr-bg);color:var(--muted);text-align:right;font-size:10px;font-weight:500;
     padding:0 5px 0 2px;position:sticky;left:0;z-index:15;user-select:none;
     border:1px solid var(--hdr-border);min-width:38px;white-space:nowrap}
 /* Corner */
 .corner{position:sticky;top:0;left:0;z-index:25;background:var(--hdr-bg);border:1px solid var(--hdr-border)}
 
-/* Data cells — white bg = unfilled Excel cell */
-td.dc{padding:1px 4px;cursor:cell;vertical-align:middle;border:1px solid #d0ccc5;
+/* Data cells */
+td.dc{padding:1px 4px;cursor:cell;vertical-align:middle;border:1px solid var(--grid-line);
       white-space:nowrap;overflow:hidden;max-width:400px;color:var(--text);
       background:var(--cell-bg);position:relative}
 td.dc.num{text-align:right}
-td.dc.fml{color:#1d6b1d}  /* formula cells: dark green, readable on white */
-td.dc.sel{background:rgba(58,93,156,.13)!important;outline:2px solid #3a5d9c;outline-offset:-2px;z-index:5}
-td.dc.sel-col,.ch.sel-col{background:rgba(58,93,156,.08)!important}
-td.dc.sel-row,.rn.sel-row{background:rgba(58,93,156,.08)!important}
+td.dc.fml{color:var(--fml-color)}
+td.dc.sel{background:var(--sel)!important;outline:2px solid var(--accent2);outline-offset:-2px;z-index:5}
+td.dc.sel-col,.ch.sel-col{background:rgba(88,149,235,.1)!important}
+td.dc.sel-row,.rn.sel-row{background:rgba(88,149,235,.1)!important}
 td.dc.editing-cell{padding:0!important;overflow:visible;z-index:30}
 td.dc.editing-cell input{
   position:absolute;inset:0;width:100%;min-width:120px;
-  background:#ffffff;color:#000;border:2px solid #3a5d9c;
+  background:var(--surface);color:var(--text);border:2px solid var(--accent2);
   font-family:Calibri,'Segoe UI',Arial,sans-serif;font-size:12px;padding:0 4px;
-  outline:none;z-index:30;box-shadow:0 2px 8px rgba(58,93,156,.2)}
-
-/* Hover — very subtle on white cells */
-td.dc:hover:not(.sel){background:rgba(58,93,156,.05)!important}
-.ch.sel-col,.ch:hover{background:#d4d0c8!important;cursor:default}
+  outline:none;z-index:30;box-shadow:0 2px 8px rgba(88,149,235,.25)}
+td.dc:hover:not(.sel){background:var(--cell-hover)!important}
+.ch:hover{background:var(--hdr-border)!important;cursor:default}
 
 .loading{display:flex;align-items:center;justify-content:center;height:300px;color:var(--muted);font-size:13px;gap:10px}
 .spin{width:18px;height:18px;border:2px solid var(--border);border-top-color:var(--accent2);border-radius:50%;animation:sp .7s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
 
-.saved-toast{position:fixed;bottom:48px;right:16px;background:#eefaee;border:1px solid #26aa26;color:#1a6e1a;
-  border-radius:6px;padding:8px 16px;font-size:12px;z-index:999;opacity:0;transition:opacity .3s;pointer-events:none;box-shadow:0 2px 8px rgba(0,0,0,.12)}
+.saved-toast{position:fixed;bottom:48px;right:16px;
+  border-radius:6px;padding:8px 16px;font-size:12px;z-index:999;
+  opacity:0;transition:opacity .3s;pointer-events:none;
+  box-shadow:0 2px 8px rgba(0,0,0,.2);
+  background:var(--toast-ok-bg);border:1px solid var(--toast-ok-border);color:var(--toast-ok-text)}
 .saved-toast.show{opacity:1}
 
 /* ── Backup panel ── */
-.bk-overlay{position:fixed;inset:0;background:rgba(0,0,0,.3);z-index:200;display:none;align-items:flex-start;justify-content:flex-end;padding:48px 16px 0}
+.bk-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;display:none;align-items:flex-start;justify-content:flex-end;padding:48px 16px 0}
 .bk-overlay.open{display:flex}
-.bk-panel{background:var(--surface);border:1px solid var(--border);border-radius:8px;width:380px;max-height:70vh;display:flex;flex-direction:column;box-shadow:0 8px 24px rgba(0,0,0,.18)}
-.bk-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--border);background:#f4f2ee;border-radius:8px 8px 0 0}
+.bk-panel{background:var(--surface);border:1px solid var(--border);border-radius:8px;width:380px;max-height:70vh;display:flex;flex-direction:column;box-shadow:0 8px 28px rgba(0,0,0,.35)}
+.bk-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--border);background:var(--surface2);border-radius:8px 8px 0 0}
 .bk-head h3{font-size:13px;font-weight:700;color:var(--accent2);margin:0}
 .bk-close{background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px;line-height:1;padding:0 4px}
 .bk-close:hover{color:var(--text)}
 .bk-body{overflow-y:auto;flex:1;padding:6px 0}
 .bk-body::-webkit-scrollbar{width:6px}
-.bk-body::-webkit-scrollbar-thumb{background:#c0bab2;border-radius:3px}
-.bk-item{display:flex;align-items:center;justify-content:space-between;padding:7px 14px;font-size:11px;border-bottom:1px solid #eae7e1;gap:8px}
+.bk-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+.bk-item{display:flex;align-items:center;justify-content:space-between;padding:7px 14px;font-size:11px;border-bottom:1px solid var(--border);gap:8px}
 .bk-item:last-child{border-bottom:none}
 .bk-name{color:var(--text);font-family:monospace;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bk-meta{color:var(--muted2);white-space:nowrap;font-size:10px}
 .bk-dl{background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--accent2);font-size:10px;padding:2px 8px;cursor:pointer;text-decoration:none;white-space:nowrap;font-weight:600}
-.bk-dl:hover{border-color:var(--accent2);background:#eaf0f9}
+.bk-dl:hover{border-color:var(--accent2)}
 .bk-empty{padding:24px;text-align:center;color:var(--muted);font-size:12px}
 </style>
 </head>
@@ -471,6 +521,7 @@ td.dc:hover:not(.sel){background:rgba(58,93,156,.05)!important}
   <div class="sep"></div>
   <span id="cellCount" class="tag">—</span>
   <div style="flex:1"></div>
+  <button id="themeBtn" onclick="toggleTheme()" title="Switch theme">🌙 Dark</button>
   <button class="btn sec" onclick="openBackups()" title="View & download backups" style="font-size:12px">🗂 Backups</button>
   <a class="btn sec" href="/" style="text-decoration:none;padding:5px 12px;font-size:12px">← Dashboard</a>
 </div>
@@ -507,15 +558,56 @@ td.dc:hover:not(.sel){background:rgba(58,93,156,.05)!important}
 
 <script>
 let curFile = '', curSheet = '', selR = 0, selC = 0;
-let sheetData = null; // { maxRow, maxCol, colWidths, rowHeights, cells }
+let sheetData = null;
 let editing = false;
 let pendingSave = null;
+let darkMode = true; // ← dark by default
 
 const NUM_FMT = n => typeof n === 'number' ? n.toLocaleString('en-PK') : (n ?? '');
 
+// ── Theme toggle ──────────────────────────────────────────────────────────────
+function toggleTheme() {
+    darkMode = !darkMode;
+    document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light');
+    document.getElementById('themeBtn').textContent = darkMode ? '🌙 Dark' : '☀️ Light';
+    // Re-render grid so cell inline styles adapt to the new mode
+    if (sheetData) renderGrid(sheetData);
+}
+
+// ── Dark-mode cell background adapter ────────────────────────────────────────
+// Strategy (matches screenshots exactly):
+//   Vivid / dark colours  (lum < 140)  → keep as-is  (green, navy, orange, amber, red, yellow all pop on dark canvas)
+//   Light tints           (lum 140-220) → darken significantly, preserving the hue
+//     e.g. pale-green alternating rows → very dark green tint (Image 2)
+//          pale-blue alternating rows  → very dark blue tint  (Image 3)
+//          pale-orange rows            → very dark orange tint
+//   Near-white / white    (lum > 220)  → return null → CSS var(--cell-bg) = #0d1117 handles it
+function adaptBgDark(hex) {
+    if (!hex) return null;
+    try {
+        const r = parseInt(hex.slice(1,3), 16);
+        const g = parseInt(hex.slice(3,5), 16);
+        const b = parseInt(hex.slice(5,7), 16);
+        const lum = (r*299 + g*587 + b*114) / 1000;
+
+        if (lum > 220) return null;          // near-white → let CSS dark bg show
+
+        if (lum > 140) {
+            // Light tinted alternating row — darken: keep hue, crush brightness
+            // Blend 12% of the original with a dark base
+            const nr = Math.min(255, Math.round(r * 0.14 + 8));
+            const ng = Math.min(255, Math.round(g * 0.14 + 10));
+            const nb = Math.min(255, Math.round(b * 0.14 + 14));
+            return '#' + [nr,ng,nb].map(x => x.toString(16).padStart(2,'0')).join('');
+        }
+
+        return hex; // vivid / dark — keep exactly as in the template screenshots
+    } catch { return null; }
+}
+
 // ── Color contrast helper ─────────────────────────────────────────────────────
 function isLightBg(hex) {
-    if (!hex || hex.length < 7) return true; // default white cell = light
+    if (!hex || hex.length < 7) return true;
     try {
         const r = parseInt(hex.slice(1, 3), 16);
         const g = parseInt(hex.slice(3, 5), 16);
@@ -621,13 +713,21 @@ function cellHtml(r, c, cell, w) {
     let style = \`min-width:\${w}px;width:\${w}px;\`;
     let cls = 'dc';
     if (s) {
-        if (s.bg) style += \`background:\${s.bg};\`;
+        // ── Background ───────────────────────────────────────────────────────
+        // In dark mode: vivid colours stay as-is; light tints are darkened;
+        // near-white → no inline bg (CSS var(--cell-bg) = #0d1117 takes over).
+        const effectiveBg = darkMode ? adaptBgDark(s.bg) : s.bg;
+        if (effectiveBg) style += \`background:\${effectiveBg};\`;
+
+        // ── Font colour ──────────────────────────────────────────────────────
         if (s.fc) {
             style += \`color:\${s.fc};\`;
-        } else if (s.bg) {
-            // No explicit font colour from Excel — auto-pick to match template contrast:
-            // dark header cells (green/navy/orange) → white; light/unfilled → black
-            style += isLightBg(s.bg) ? 'color:#000000;' : 'color:#ffffff;';
+        } else if (effectiveBg) {
+            // Auto-contrast: dark bg cell → white text; light bg → black text
+            style += isLightBg(effectiveBg) ? 'color:#000000;' : 'color:#ffffff;';
+        } else if (darkMode) {
+            // No bg colour (cell is dark default) — use light text
+            style += 'color:var(--text);';
         }
         if (s.b)  style += 'font-weight:700;';
         if (s.i)  style += 'font-style:italic;';
@@ -856,14 +956,14 @@ async function saveCell(r, c, value) {
 function showToast(backupName, errMsg) {
     const t = document.getElementById('savedToast');
     if (errMsg) {
-        t.style.background = '#fff0f0';
-        t.style.borderColor = '#c04e4e';
-        t.style.color = '#7a1c1c';
+        t.style.background = 'var(--toast-err-bg)';
+        t.style.borderColor = 'var(--toast-err-border)';
+        t.style.color = 'var(--toast-err-text)';
         t.textContent = '✗ ' + errMsg;
     } else {
-        t.style.background = '#eefaee';
-        t.style.borderColor = '#26aa26';
-        t.style.color = '#1a6e1a';
+        t.style.background = 'var(--toast-ok-bg)';
+        t.style.borderColor = 'var(--toast-ok-border)';
+        t.style.color = 'var(--toast-ok-text)';
         t.textContent = backupName ? \`✓ Saved · backup: \${backupName}\` : '✓ Saved';
     }
     t.classList.add('show');

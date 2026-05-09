@@ -16,15 +16,15 @@ services:
       - bot-net
     ports:
       - "8080:80"             # browser-facing port; change left side if 8080 is taken
+    environment:
+      - JWT_ENABLED=true
+      - JWT_SECRET=${ONLYOFFICE_JWT_SECRET:-insecure-default-change-in-env}
     volumes:
       - onlyoffice-data:/var/www/onlyoffice/Data
       - onlyoffice-logs:/var/log/onlyoffice
       - onlyoffice-db:/var/lib/postgresql
       - onlyoffice-rabbitmq:/var/lib/rabbitmq
       - onlyoffice-redis:/var/lib/redis
-      # JWT disabled via local.json — reliable across DS 7/8/9.
-      # env var JWT_ENABLED=false alone is ignored in DS 9.x.
-      - ./onlyoffice-local.json:/etc/onlyoffice/documentserver/local.json:ro
     # First boot takes 60-120 s while DS initialises its database — be patient
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/healthcheck"]

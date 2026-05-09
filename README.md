@@ -12,7 +12,7 @@ No cloud. No subscriptions. No fees. Your data stays home.
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=flat-square&logo=docker)](https://docker.com)
 [![ExcelJS](https://img.shields.io/badge/ExcelJS-4.x-217346?style=flat-square)](https://github.com/exceljs/exceljs)
 [![OnlyOffice](https://img.shields.io/badge/OnlyOffice-DS-FF6F00?style=flat-square)](https://www.onlyoffice.com)
-[![License](https://img.shields.io/badge/License-Private-red?style=flat-square)]()
+[![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 
 > Type **`Gofy`** on WhatsApp to open the menu and start managing your budget in seconds.
 
@@ -40,6 +40,8 @@ No cloud. No subscriptions. No fees. Your data stays home.
 - [Conflict Resolution](#-conflict-resolution)
 - [Troubleshooting](#-troubleshooting)
 - [Security](#-security)
+- [Contributing](#-contributing)
+- [License](#-license)
 
 ---
 
@@ -946,10 +948,70 @@ docker compose ps
 
 ---
 
+## 🤝 Contributing
+
+Contributions are welcome! If you find a bug, have a feature idea, or want to improve the docs, feel free to open an issue or submit a pull request.
+
+### How to contribute
+
+1. **Fork** the repository
+2. **Create a branch** for your change: `git checkout -b feature/your-feature-name`
+3. **Commit** your changes with a clear message: `git commit -m "feat: add your feature"`
+4. **Push** to your fork: `git push origin feature/your-feature-name`
+5. **Open a Pull Request** — describe what you changed and why
+
+### Guidelines
+
+- Keep pull requests focused — one feature or fix per PR
+- Test your changes locally with Docker before submitting
+- Never commit `.env`, `session/`, or any personal data files
+- Follow the existing code style (Node.js `'use strict'`, async/await)
+
+### Reporting issues
+
+Please include the following in any bug report:
+- Node.js and Docker version (`node --version`, `docker --version`)
+- Relevant log output (`docker compose logs saving-bot-v1.0`)
+- Steps to reproduce the issue
+
+---
+
+## 📄 License
+
+```
+MIT License
+
+Copyright (c) 2026 Mirza Nehal Baig
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+> This project is open source under the **MIT License**. You are free to use, modify, and distribute it — personal or commercial — as long as the original copyright notice is retained. See the [`LICENSE`](LICENSE) file for the full text.
+
+---
+
 <div align="center">
 
 Built with ❤️ for family budget management
 
-**Saving-Bot-v1.0** · Private homelab project
+**Saving-Bot-v1.0** · Open Source · MIT License
+
+[⭐ Star this repo](../../stargazers) · [🐛 Report a bug](../../issues) · [💡 Request a feature](../../issues)
 
 </div>

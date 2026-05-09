@@ -513,12 +513,27 @@ async function loadMonthData(month, wb) {
         }
     }
 
-    let totalIncome = 0, totalExpenses = 0;
+    // ── Compute totals from day-cell sums (used for category breakdown) ─────────
+    let dayCellIncome = 0, totalExpenses = 0;
     for (const [sec, cats] of Object.entries(sectionData)) {
         const secTotal = Object.values(cats).reduce((a, b) => a + b, 0);
-        if (sec === 'INCOME') totalIncome += secTotal;
+        if (sec === 'INCOME') dayCellIncome += secTotal;
         else if (sec !== 'Petty Cash Used') totalExpenses += secTotal;
     }
+
+    // ── Authoritative Total Income: Budget row 16 matches what Excel/OnlyOffice shows ──
+    // Budget row 16 = "Total Income" which references the Budget's INCOME formula chain.
+    // The day-cell sum can differ when income cells contain formulas (OnlyOffice
+    // recalculates them live; ExcelJS reads cached results).
+    // Strategy: use the LARGER of the two — this correctly handles:
+    //   • WhatsApp bot writes (ExcelJS): day-cell sum is fresh, Budget cache may lag → use day sum
+    //   • OnlyOffice edits: Budget formula chain is recalculated → use Budget total
+    const budgetTotalIncome = (() => {
+        const raw = getCellValue(budgetWs.getCell(16, col));
+        return typeof raw === 'number' && raw > 0 ? raw : 0;
+    })();
+    const totalIncome = budgetTotalIncome > dayCellIncome ? budgetTotalIncome : dayCellIncome;
+
     const net = totalIncome - totalExpenses;
 
     // ── Balance I Have Left (Bank) ────────────────────────────────────────────

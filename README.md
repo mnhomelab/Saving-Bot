@@ -717,7 +717,7 @@ OnlyOffice DS ─────────────────► BOT_CALLBAC
                                    ↑ container-to-container; never leaves Docker network
 ```
 
-> ⚠️ **Common misconfiguration:** `BOT_CALLBACK_HOST` must be reachable by the OnlyOffice DS container — not by your browser. Inside Docker, container names work (e.g. `http://saving-bot-v1.0:3001`), but note that Docker DNS may misparse names with dots. If saves fail silently, switch to the server's public IP instead.
+> ⚠️ **Common misconfiguration:** `BOT_CALLBACK_HOST` must be reachable by the OnlyOffice DS container — not by your browser. Inside Docker, container names work (e.g. `http://YOUR_SERVER:3001`), but note that Docker DNS may misparse names with dots. If saves fail silently, switch to the server's public IP instead.
 
 ### JWT Signing
 

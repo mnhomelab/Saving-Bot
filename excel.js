@@ -13,9 +13,15 @@ const ROW_MAP = {
     "INCOME|Wages & Tips":5, "INCOME|Interest Income":6, "INCOME|Dividends":7,
     "INCOME|Gifts Received":8, "INCOME|Refunds/Reimbursements":9,
     "INCOME|Other":10, "INCOME|Transfer From Savings":11,
-    "Petty Cash Used|Pocket Money Wife":15, "Petty Cash Used|Car Part":16,
-    "Petty Cash Used|Food":17, "Petty Cash Used|Donation":18,
-    "Petty Cash Used|Eidi":19, "Petty Cash Used|Other":22,
+    // Petty Cash Used — rows 15-22 in month sheets
+    "Petty Cash Used|Pocket Money Wife":15,
+    "Petty Cash Used|Car Repair / Workshop":16,   // was "Car Part" — now matches Excel A16
+    "Petty Cash Used|Food":17,
+    "Petty Cash Used|Donation":18,
+    "Petty Cash Used|Eidi":19,                    // hardcoded plain string in all month sheets
+    "Petty Cash Used|Donation (2)":20,             // second Donation row — was missing
+    "Petty Cash Used|Pocket Money Husband":21,     // was missing
+    "Petty Cash Used|Other":22,
     "SAVINGS EXPENSE|Emergency Fund":26, "SAVINGS EXPENSE|Investments":27,
     "SAVINGS EXPENSE|Pocket Money Wife":28,
     "HOME EXPENSES|Mortgage/Rent":34, "HOME EXPENSES|Electricity":35,
@@ -57,6 +63,10 @@ const ROW_MAP = {
     "VACATION|Rental Car":152, "VACATION|Entertainment":153, "VACATION|Other":154,
     "MISCELLANEOUS|Bank Fees":158, "MISCELLANEOUS|Postage":159, "MISCELLANEOUS|Other":160,
 };
+
+// Section headers that are NOT all-caps (so the all-caps heuristic won't catch them).
+// 'Petty Cash Used' is the only mixed-case section in the current template.
+const SECTION_HEADERS = new Set(['Petty Cash Used']);
 
 // ── Derive SECTIONS from ROW_MAP — static fallback ───────────────────────────
 function getSections() {
@@ -133,10 +143,18 @@ async function loadSectionsFromExcel() {
         if (!janWs) throw new Error('No month worksheet found');
 
         // Build Jan col-A map: rowNum → cellValue (strings only)
+        // ExcelJS returns formula cells as {formula, result} objects — extract result too.
         const janColA = {};
-        for (let r = 1; r <= 200; r++) {
+        for (let r = 1; r <= 300; r++) {
             const raw = janWs.getCell(r, 1).value;
-            if (typeof raw === 'string' && raw.trim()) janColA[r] = raw.trim();
+            let strVal = null;
+            if (typeof raw === 'string') {
+                strVal = raw.trim();
+            } else if (raw && typeof raw === 'object' && raw.result !== undefined) {
+                // Formula cell — use cached result (e.g. ='Section-Category'!A82 → 'Petty Cash Used')
+                if (typeof raw.result === 'string') strVal = raw.result.trim();
+            }
+            if (strVal) janColA[r] = strVal;
         }
 
         // For each section, find its header row in Jan by text match
@@ -162,21 +180,33 @@ async function loadSectionsFromExcel() {
 
             for (const { offset, templateName } of cats) {
                 const janRow  = baseRow + offset;
-                // SC name is authoritative. Only read Jan live name if SC has a placeholder.
+                const liveRaw = janWs.getCell(janRow, 1).value;
+                // A plain string in Jan (not a formula) is an intentional override
+                // e.g. 'Eidi' hardcoded in A19 instead of the formula pointing to 'Medical'
+                const isLivePlain = typeof liveRaw === 'string'
+                                 && liveRaw.trim()
+                                 && !SC_PLACEHOLDER.test(liveRaw.trim());
+
                 let finalName = templateName;
                 if (SC_PLACEHOLDER.test(templateName)) {
-                    const liveRaw = janWs.getCell(janRow, 1).value;
-                    finalName = (typeof liveRaw === 'string' && liveRaw.trim() && !SC_PLACEHOLDER.test(liveRaw.trim()))
-                                ? liveRaw.trim()
-                                : null;
+                    // Placeholder in SC — read live value from Jan
+                    finalName = isLivePlain ? liveRaw.trim() : null;
+                } else if (isLivePlain && liveRaw.trim() !== templateName) {
+                    // Plain string override in Jan (e.g. 'Eidi' replacing 'Medical')
+                    finalName = liveRaw.trim();
                 }
 
-                if (!finalName || SC_PLACEHOLDER.test(finalName)) continue;  // unfilled placeholder
+                if (!finalName || SC_PLACEHOLDER.test(finalName)) continue;
 
-                if (!sections[sectionName].includes(finalName)) {
-                    sections[sectionName].push(finalName);
-                    rowMap[`${sectionName}|${finalName}`] = janRow;
-                }
+                // Allow duplicate category names (e.g. two 'Donation' rows)
+                // Append (2), (3)... suffix so both appear in the bot menu
+                let displayName = finalName;
+                const dupCount = sections[sectionName]
+                    .filter(n => n === finalName || n.startsWith(finalName + ' (')).length;
+                if (dupCount > 0) displayName = `${finalName} (${dupCount + 1})`;
+
+                sections[sectionName].push(displayName);
+                rowMap[`${sectionName}|${displayName}`] = janRow;
             }
         }
 

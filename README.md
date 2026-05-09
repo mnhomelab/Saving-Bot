@@ -280,7 +280,7 @@ DASHBOARD_HOST=http://YOUR_SERVER_IP:3001
 
 # ── OnlyOffice Document Server ─────────────────────────────────────────────────
 ONLYOFFICE_DS_URL=http://YOUR_SERVER_IP:8080
-BOT_CALLBACK_HOST=http://saving-bot-v1.0:3001
+BOT_CALLBACK_HOST=http://YOUR_SERVER_IP:3001
 ONLYOFFICE_SECRET=change-me-generate-with-openssl-rand-hex-24
 ONLYOFFICE_JWT_SECRET=change-me-generate-with-openssl-rand-hex-32
 

@@ -201,14 +201,10 @@ function createEditorRouter(app, requireSession) {
             },
         };
 
-        // Sign with JWT if secret is configured (required for OnlyOffice DS 8+/9+)
+        // JWT signing — only active when ONLYOFFICE_JWT_SECRET is set in .env
+        // (not needed when JWT is disabled via onlyoffice-local.json, which is the default)
         const token = jwtSign(config);
-        if (token) {
-            config.token = token;
-            console.log(`🔑 JWT signed config for: ${file}`);
-        } else {
-            console.warn(`⚠️  No ONLYOFFICE_JWT_SECRET set — JWT signing skipped for ${file}`);
-        }
+        if (token) config.token = token;
 
         res.json({ ok: true, config, dsUrl: DS_URL });
 

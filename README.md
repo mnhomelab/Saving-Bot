@@ -304,7 +304,7 @@ ALERT_EMAIL=alert-recipient@gmail.com
 | `DASHBOARD_PORT` | | `3001` | Port for dashboard + editor |
 | `DASHBOARD_HOST` | ✅ | auto-detect | Public URL for link generation (e.g. `http://65.x.x.x:3001`) |
 | `ONLYOFFICE_DS_URL` | ✅ | auto-detect | Browser-facing URL of OnlyOffice DS (e.g. `http://65.x.x.x:8080`) |
-| `BOT_CALLBACK_HOST` | ✅ | auto-detect | URL OnlyOffice DS uses to reach the bot (e.g. `http://saving-bot-v1.0:3001`) |
+| `BOT_CALLBACK_HOST` | ✅ | auto-detect | URL OnlyOffice DS uses to reach the bot (e.g. `http://YOUR_SERVER:3001`) |
 | `ONLYOFFICE_SECRET` | ✅ | auto-generated | Shared secret for `/api/edit/serve` and `/api/edit/callback` |
 | `ONLYOFFICE_JWT_SECRET` | ✅ | none | JWT signing secret — must match `JWT_SECRET` in `docker-compose.yml` |
 | `SMTP_HOST` | | — | SMTP server (e.g. `smtp.gmail.com`) |
@@ -704,7 +704,7 @@ To download a backup: open the file picker → click 🗂 on the file → pick a
 ```ini
 # .env
 ONLYOFFICE_DS_URL=http://YOUR_SERVER_IP:8080    # Browser-facing URL (user's device → DS)
-BOT_CALLBACK_HOST=http://saving-bot-v1.0:3001   # DS-to-bot URL (Docker internal)
+BOT_CALLBACK_HOST=http://YOUR_SERVER:3001   # DS-to-bot URL (Docker internal)
 ONLYOFFICE_SECRET=<openssl rand -hex 24>         # Secures /serve and /callback routes
 ONLYOFFICE_JWT_SECRET=<openssl rand -hex 32>     # JWT signing for OnlyOffice 8+/9+
 ```

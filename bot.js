@@ -73,7 +73,7 @@ client.on('ready', () => {
     refreshDashboardSummary();
     mailer.testSmtp().catch(() => {});        // SMTP connectivity test on every start
     mailer.alertBotOnline().catch(() => {});
-    console.log('✅ Saving-Bot-v0.1 is LIVE!');
+    console.log('✅ Saving-Bot-v1.0 is LIVE!');
     console.log(`🔒 Whitelist: ${WHITELIST.join(', ')}`);
     console.log('💬 Send "Gofy" to start\n');
 });
@@ -146,5 +146,5 @@ client.on('auth_failure', (msg) => { console.error('❌ Auth failed:', msg); mai
 client.on('disconnected', (reason) => { console.log('🔌 Disconnected:', reason); mailer.alertBotDown(reason).catch(() => {}); });
 
 // ── Start ─────────────────────────────────────────────────────────────────────
-console.log('🦀 Starting Saving-Bot-v0.1...');
+console.log('🦀 Starting Saving-Bot-v1.0...');
 client.initialize();

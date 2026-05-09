@@ -34,9 +34,9 @@ services:
       start_period: 120s
 
   # ── Saving Bot ───────────────────────────────────────────────────────────────
-  saving-bot-v0.1:
+  saving-bot-v1.0:
     image: node:20-slim
-    container_name: saving-bot-v0.1
+    container_name: saving-bot-v1.0
     restart: unless-stopped
     working_dir: /app
     networks:

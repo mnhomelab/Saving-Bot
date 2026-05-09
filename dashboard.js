@@ -836,7 +836,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
     <div class="block-head"><span class="block-title">💬 Live Activity Log</span><span class="block-badge" id="b-log-count">—</span></div>
     <div class="block-body" id="b-activity"><div class="empty">Waiting for messages…</div></div>
   </div>
-  <div class="footer">Last updated: <span id="last-upd">—</span> · Saving-Bot-v0.1</div>
+  <div class="footer">Last updated: <span id="last-upd">—</span> · Saving-Bot-v1.0</div>
 </div>
 <script>
 const N=n=>(n||0).toLocaleString('en-PK'),col=n=>n>=0?'v-green':'v-red';

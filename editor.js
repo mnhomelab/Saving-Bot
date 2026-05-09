@@ -18,7 +18,7 @@
 //   ONLYOFFICE_DS_URL      URL the BROWSER uses to reach Document Server
 //                          e.g. http://YOUR_SERVER_IP:8080
 //   BOT_CALLBACK_HOST      URL OnlyOffice DS uses to reach THIS bot
-//                          e.g. http://saving-bot-v0.1:3001  (Docker container name)
+//                          e.g. http://saving-bot-v1.0:3001  (Docker container name)
 //   ONLYOFFICE_SECRET      Shared secret for serve/callback security
 //                          (auto-derived if not set, but set it explicitly in prod)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -65,12 +65,12 @@ function getDsUrl() {
 // OnlyOffice DS calls this URL to download the xlsx and post save events.
 // If BOT_CALLBACK_HOST contains the placeholder (or is unset), auto-substitute
 // the detected public IP — same pattern as getDsUrl().
-// NOTE: avoid container names with dots (e.g. saving-bot-v0.1) — Docker DNS
+// NOTE: avoid container names with dots (e.g. saving-bot-v1.0) — Docker DNS
 // misparses them. Use the dot-free alias 'savingbot' or the public IP instead.
 function getBotUrl() {
     const env  = (process.env.BOT_CALLBACK_HOST || '').replace(/\/$/, '');
     const port = process.env.DASHBOARD_PORT || 3001;
-    if (env && !env.includes('YOUR_SERVER_IP') && !env.includes('saving-bot-v0.1'))
+    if (env && !env.includes('YOUR_SERVER_IP') && !env.includes('saving-bot-v1.0'))
         return env;
     if (_detectedIp) return `http://${_detectedIp}:${port}`;
     return `http://localhost:${port}`;

@@ -61,6 +61,21 @@ function getDsUrl() {
     return 'http://localhost:8080';
 }
 
+// ── Bot callback URL resolver ─────────────────────────────────────────────────
+// OnlyOffice DS calls this URL to download the xlsx and post save events.
+// If BOT_CALLBACK_HOST contains the placeholder (or is unset), auto-substitute
+// the detected public IP — same pattern as getDsUrl().
+// NOTE: avoid container names with dots (e.g. saving-bot-v0.1) — Docker DNS
+// misparses them. Use the dot-free alias 'savingbot' or the public IP instead.
+function getBotUrl() {
+    const env  = (process.env.BOT_CALLBACK_HOST || '').replace(/\/$/, '');
+    const port = process.env.DASHBOARD_PORT || 3001;
+    if (env && !env.includes('YOUR_SERVER_IP') && !env.includes('saving-bot-v0.1'))
+        return env;
+    if (_detectedIp) return `http://${_detectedIp}:${port}`;
+    return `http://localhost:${port}`;
+}
+
 // ── JWT signing for OnlyOffice DS ─────────────────────────────────────────────
 // OnlyOffice 8+ has JWT enabled by default. Sign the config if the secret is set.
 // Set ONLYOFFICE_JWT_SECRET in .env to match JWT_SECRET in docker-compose.
@@ -173,7 +188,8 @@ function createEditorRouter(app, requireSession) {
             return res.json({ ok: false, error: 'File not found' });
 
         const DS_URL  = getDsUrl();
-        const BOT_URL = (process.env.BOT_CALLBACK_HOST || `http://localhost:${process.env.DASHBOARD_PORT || 3001}`).replace(/\/$/, '');
+        const BOT_URL = getBotUrl();
+        console.log(`🔗 OO config → DS: ${DS_URL}  BOT: ${BOT_URL}`);
 
         const config = {
             document: {

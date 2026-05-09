@@ -1239,7 +1239,8 @@ function showMainTab(id, btn) {
 
     return `<!DOCTYPE html><html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${month} ${activeYear} Report</title>
+<title>💰 ${month} ${activeYear} Report</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💰</text></svg>">
 <style>${COMMON_CSS}</style>${REPORT_TOGGLE_SCRIPT}</head><body>
 <div class="header">
     <h1>💰 ${month} ${activeYear} Report</h1>
@@ -1367,7 +1368,8 @@ function showMainTab_${m}(id, btn) {
 
     return `<!DOCTYPE html><html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${activeYear} Year Overview — SavingHomeLab</title>
+<title>💰 ${activeYear} Year Overview — SavingHomeLab</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💰</text></svg>">
 <style>
 ${COMMON_CSS}
 .month-panel { display: none; }

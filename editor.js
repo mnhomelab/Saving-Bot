@@ -53,9 +53,31 @@ detectPublicIp().then(ip => {
 });
 
 function getDsUrl() {
-    if (process.env.ONLYOFFICE_DS_URL) return process.env.ONLYOFFICE_DS_URL.replace(/\/$/, '');
+    const env = (process.env.ONLYOFFICE_DS_URL || '').replace(/\/$/, '');
+    // If env var is set AND doesn't contain the placeholder, use it as-is
+    if (env && !env.includes('YOUR_SERVER_IP')) return env;
+    // Fall back to auto-detected public IP (populated at startup)
     if (_detectedIp) return `http://${_detectedIp}:8080`;
-    return 'http://localhost:8080'; // last-resort fallback
+    return 'http://localhost:8080';
+}
+
+// ── JWT signing for OnlyOffice DS ─────────────────────────────────────────────
+// OnlyOffice 8+ has JWT enabled by default. Sign the config if the secret is set.
+// Set ONLYOFFICE_JWT_SECRET in .env to match JWT_SECRET in docker-compose.
+function jwtSign(payload) {
+    const secret = process.env.ONLYOFFICE_JWT_SECRET;
+    if (!secret) return null;
+    try {
+        const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
+        const body   = Buffer.from(JSON.stringify(payload)).toString('base64url');
+        const sig    = crypto.createHmac('sha256', secret)
+            .update(`${header}.${body}`)
+            .digest('base64url');
+        return `${header}.${body}.${sig}`;
+    } catch (e) {
+        console.warn('⚠️  JWT signing failed:', e.message);
+        return null;
+    }
 }
 
 // ── Backup directory ──────────────────────────────────────────────────────────
@@ -179,10 +201,18 @@ function createEditorRouter(app, requireSession) {
             },
         };
 
-        res.json({ ok: true, config, dsUrl: DS_URL });
-    });
+        // Sign with JWT if secret is configured (required for OnlyOffice DS 8+/9+)
+        const token = jwtSign(config);
+        if (token) {
+            config.token = token;
+            console.log(`🔑 JWT signed config for: ${file}`);
+        } else {
+            console.warn(`⚠️  No ONLYOFFICE_JWT_SECRET set — JWT signing skipped for ${file}`);
+        }
 
-    // Serve xlsx to OnlyOffice DS (no session — uses SERVE_SECRET)
+        res.json({ ok: true, config, dsUrl: DS_URL });
+
+    });
     app.get('/api/edit/serve/:file', (req, res) => {
         if (req.query.secret !== SERVE_SECRET) {
             console.warn('⚠️  Unauthorized file serve attempt');

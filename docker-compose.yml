@@ -17,8 +17,8 @@ services:
     ports:
       - "8080:80"             # browser-facing port; change left side if 8080 is taken
     environment:
-      - JWT_ENABLED=false     # set to true and add JWT_SECRET=<secret> for production
-      # - JWT_SECRET=change-me-in-production
+      - JWT_ENABLED=true
+      - JWT_SECRET=${ONLYOFFICE_JWT_SECRET:-insecure-default-change-in-env}
     volumes:
       - onlyoffice-data:/var/www/onlyoffice/Data
       - onlyoffice-logs:/var/log/onlyoffice

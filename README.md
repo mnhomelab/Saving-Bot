@@ -262,11 +262,11 @@ nano .env
 # ── Whitelist ──────────────────────────────────────────────────────────────────
 # Comma-separated. Include BOTH phone format AND LID format for each person.
 # How to find LIDs: see "Adding WhatsApp Numbers" section below.
-WHITELIST=923111794794,161942429786177,923244198958,133977293766855
+WHITELIST=923111794795,161942429786177,9232441898958,133977293766855
 
 # ── Scheduled backup recipients ────────────────────────────────────────────────
 # Phone format only (no LIDs). Receive the Excel file 4× daily.
-NOTIFY_NUMBERS=923111794794,923244198958
+NOTIFY_NUMBERS=923111794795,9232441898958
 
 # ── Template path ──────────────────────────────────────────────────────────────
 TEMPLATE_PATH=./Template.xlsx
@@ -344,7 +344,7 @@ Modern WhatsApp uses two ID formats for the same number. You need **both** in th
 
 | Format | Example | When used |
 |---|---|---|
-| Phone format | `923111794794` | Standard `@c.us` messages |
+| Phone format | `923111794795` | Standard `@c.us` messages |
 | LID format | `161942429786177` | Multi-device `@lid` messages |
 
 ### Step-by-step
@@ -367,18 +367,18 @@ docker compose logs -f saving-bot-v1.0
 Or phone format:
 
 ```
-🔍 Resolved 923111794794@c.us → 923111794794
-📩 [923111794794] hello
+🔍 Resolved 923111794795@c.us → 923111794795
+📩 [923111794795] hello
 ```
 
 **4. Add both IDs to `.env`:**
 
 ```ini
 # Before
-WHITELIST=923111794794,161942429786177
+WHITELIST=923111794795,161942429786177
 
 # After — added new member
-WHITELIST=923111794794,161942429786177,923331234567,188227495436364
+WHITELIST=923111794795,161942429786177,923331234567,188227495436364
 #                                      ─────────────  ────────────────
 #                                      phone format    LID format
 ```

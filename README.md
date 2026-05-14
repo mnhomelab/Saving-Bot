@@ -12,7 +12,7 @@ No cloud. No subscriptions. No fees. Your data stays home.
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=flat-square&logo=docker)](https://docker.com)
 [![ExcelJS](https://img.shields.io/badge/ExcelJS-4.x-217346?style=flat-square)](https://github.com/exceljs/exceljs)
 [![OnlyOffice](https://img.shields.io/badge/OnlyOffice-DS-FF6F00?style=flat-square)](https://www.onlyoffice.com)
-[![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
+[![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](#-license)
 
 > Type **`Gofy`** on WhatsApp to open the menu and start managing your budget in seconds.
 
@@ -38,6 +38,7 @@ No cloud. No subscriptions. No fees. Your data stays home.
 - [In-Browser Excel Editor (OnlyOffice)](#-in-browser-excel-editor-onlyoffice)
 - [Email Alerts](#-email-alerts)
 - [Conflict Resolution](#-conflict-resolution)
+- [Testing & Local Checks](#-testing--local-checks)
 - [Troubleshooting](#-troubleshooting)
 - [Security](#-security)
 - [Contributing](#-contributing)
@@ -195,7 +196,7 @@ cp /path/to/Saving-2026.xlsx Saving-Year/Saving-2026.xlsx
 ### Step 4 — Create your `.env` file
 
 ```bash
-cp .env.example .env
+cp env.example .env
 nano .env          # fill in your phone numbers and server IP
 ```
 
@@ -207,7 +208,7 @@ See [Configuration](#-configuration) for what to put in it.
 # ONLYOFFICE_SECRET
 openssl rand -hex 24
 
-# ONLYOFFICE_JWT_SECRET (paste into .env AND docker-compose JWT_SECRET)
+# ONLYOFFICE_JWT_SECRET (paste into .env; docker-compose passes it to JWT_SECRET)
 openssl rand -hex 32
 ```
 
@@ -254,7 +255,7 @@ All sensitive values live in a `.env` file — **never hardcoded, never committe
 Copy the example and edit it:
 
 ```bash
-cp .env.example .env
+cp env.example .env
 nano .env
 ```
 
@@ -270,6 +271,7 @@ NOTIFY_NUMBERS=923111794795,9232441898958
 
 # ── Template path ──────────────────────────────────────────────────────────────
 TEMPLATE_PATH=assets/templates/Template.xlsx
+YEAR_FOLDER=Saving-Year
 
 # ── Timezone ───────────────────────────────────────────────────────────────────
 TZ=Asia/Karachi
@@ -280,7 +282,7 @@ DASHBOARD_HOST=http://YOUR_SERVER_IP:3001
 
 # ── OnlyOffice Document Server ─────────────────────────────────────────────────
 ONLYOFFICE_DS_URL=http://YOUR_SERVER_IP:8080
-BOT_CALLBACK_HOST=http://YOUR_SERVER_IP:3001
+BOT_CALLBACK_HOST=http://savingbot:3001
 ONLYOFFICE_SECRET=change-me-generate-with-openssl-rand-hex-24
 ONLYOFFICE_JWT_SECRET=change-me-generate-with-openssl-rand-hex-32
 
@@ -305,7 +307,7 @@ ALERT_EMAIL=alert-recipient@gmail.com
 | `DASHBOARD_PORT` | | `3001` | Port for dashboard + editor |
 | `DASHBOARD_HOST` | ✅ | auto-detect | Public URL for link generation (e.g. `http://65.x.x.x:3001`) |
 | `ONLYOFFICE_DS_URL` | ✅ | auto-detect | Browser-facing URL of OnlyOffice DS (e.g. `http://65.x.x.x:8080`) |
-| `BOT_CALLBACK_HOST` | ✅ | auto-detect | URL OnlyOffice DS uses to reach the bot (e.g. `http://65.x.x.x:3001`) |
+| `BOT_CALLBACK_HOST` | ✅ | auto-detect | URL OnlyOffice DS uses to reach the bot (Docker alias recommended: `http://savingbot:3001`) |
 | `ONLYOFFICE_SECRET` | ✅ | auto-generated | Shared secret for `/api/edit/serve` and `/api/edit/callback` |
 | `ONLYOFFICE_JWT_SECRET` | ✅ | none | JWT signing secret — must match `JWT_SECRET` in `docker-compose.yml` |
 | `SMTP_HOST` | | — | SMTP server (e.g. `smtp.gmail.com`) |
@@ -315,7 +317,7 @@ ALERT_EMAIL=alert-recipient@gmail.com
 | `SMTP_FROM` | | `SMTP_USER` | From address in outgoing emails |
 | `ALERT_EMAIL` | | — | Comma-separated email recipients for all alerts |
 
-> **Auto-detect fallback:** If `DASHBOARD_HOST`, `ONLYOFFICE_DS_URL`, or `BOT_CALLBACK_HOST` contain `YOUR_SERVER_IP` (the placeholder) or are unset, the bot queries `api.ipify.org` at startup and substitutes the detected public IP. Set these explicitly in production.
+> **Auto-detect fallback:** If `DASHBOARD_HOST`, `ONLYOFFICE_DS_URL`, or `BOT_CALLBACK_HOST` contain `YOUR_SERVER_IP` (the placeholder) or are unset, the dashboard/editor code queries `api.ipify.org` at startup and substitutes the detected public IP. For Docker deployments, keep `BOT_CALLBACK_HOST=http://savingbot:3001` unless OnlyOffice DS cannot reach the bot over the Docker network.
 
 ### How `src/config/index.js` uses it
 
@@ -335,7 +337,7 @@ bot_settings.json  ← active year + per-user backup prefs
 Saving-Year/       ← your personal Excel budget files and backups
 ```
 
-> ✅ **Safe to commit:** `.env.example`, all `.js` files, `assets/templates/Template.xlsx`, `README.md`, `assets/images/`
+> ✅ **Safe to commit:** `env.example`, all `.js` files, `assets/templates/Template.xlsx`, `README.md`, `assets/images/`
 
 ---
 
@@ -705,7 +707,7 @@ To download a backup: open the file picker → click 🗂 on the file → pick a
 ```ini
 # .env
 ONLYOFFICE_DS_URL=http://YOUR_SERVER_IP:8080    # Browser-facing URL (user's device → DS)
-BOT_CALLBACK_HOST=http://YOUR_SERVER:3001   # DS-to-bot URL (Docker internal)
+BOT_CALLBACK_HOST=http://savingbot:3001            # DS-to-bot URL (Docker internal alias)
 ONLYOFFICE_SECRET=<openssl rand -hex 24>         # Secures /serve and /callback routes
 ONLYOFFICE_JWT_SECRET=<openssl rand -hex 32>     # JWT signing for OnlyOffice 8+/9+
 ```
@@ -714,11 +716,11 @@ ONLYOFFICE_JWT_SECRET=<openssl rand -hex 32>     # JWT signing for OnlyOffice 8+
 
 ```
 Browser ───────────────────────► ONLYOFFICE_DS_URL:8080  (loads the editor JS)
-OnlyOffice DS ─────────────────► BOT_CALLBACK_HOST:3001  (downloads xlsx, posts saves)
+OnlyOffice DS ─────────────────► BOT_CALLBACK_HOST       (downloads xlsx, posts saves)
                                    ↑ container-to-container; never leaves Docker network
 ```
 
-> ⚠️ **Common misconfiguration:** `BOT_CALLBACK_HOST` must be reachable by the OnlyOffice DS container — not by your browser. Inside Docker, container names work (e.g. `http://YOUR_SERVER:3001`), but note that Docker DNS may misparse names with dots. If saves fail silently, switch to the server's public IP instead.
+> ⚠️ **Common misconfiguration:** `BOT_CALLBACK_HOST` must be reachable by the OnlyOffice DS container — not by your browser. Inside Docker, use the dot-free network alias from `docker-compose.yml` (e.g. `http://savingbot:3001`). Docker DNS can misparse names with dots such as `saving-bot-v1.0`; if saves fail silently, switch to the alias or to the server's reachable IP.
 
 ### JWT Signing
 
@@ -868,6 +870,21 @@ Each resolved conflict (Append, Delete, Change, Replace) triggers an email alert
 
 ---
 
+## 🧪 Testing & Local Checks
+
+Use these commands before opening a pull request or after changing the bot code:
+
+| Command | What it verifies |
+|---|---|
+| `npm install` | Installs the Node.js dependencies used by the bot and smoke tests |
+| `npm test` | Runs `tests/smoke.test.js`, which validates module wiring, required paths, and core config arrays |
+| `npm run check` | Runs `node --check` against the app entrypoint and every JavaScript file under `src/` and `tests/` |
+| `docker compose config` | Validates the Compose file after editing services, ports, or environment wiring |
+
+For a full runtime check, start the stack with `docker compose up -d`, then watch `docker compose logs -f saving-bot-v1.0` until the QR code or ready message appears.
+
+---
+
 ## 🔧 Troubleshooting
 
 | Problem | Fix |
@@ -889,7 +906,7 @@ Each resolved conflict (Append, Delete, Change, Replace) triggers an email alert
 | Dashboard report not refreshing | Click the **↺ Refresh** button; if blank, check `/report` in bot logs for Excel errors |
 | OnlyOffice editor blank / "Cannot reach DS" | `ONLYOFFICE_DS_URL` must be the **browser-facing** IP:8080 — not the Docker container name |
 | OnlyOffice DS not ready | First boot takes 60–120 s; run `docker logs onlyoffice-ds` and wait for health check |
-| File saves in OnlyOffice don't persist | Check `BOT_CALLBACK_HOST` — DS must reach the bot. Use public IP if container name has dots |
+| File saves in OnlyOffice don't persist | Check `BOT_CALLBACK_HOST` — DS must reach the bot. Use `http://savingbot:3001` or a reachable IP, not the dotted container name |
 | `401 Unauthorized` in OnlyOffice callback logs | `ONLYOFFICE_SECRET` mismatch — ensure `.env` value matches what was set at startup |
 | JWT error in OnlyOffice | `ONLYOFFICE_JWT_SECRET` in `.env` must exactly match `JWT_SECRET` in `docker-compose.yml` |
 | Email alerts not sending | `docker logs saving-bot-v1.0 \| grep SMTP` — check the startup diagnostic table |
@@ -1001,7 +1018,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-> This project is open source under the **MIT License**. You are free to use, modify, and distribute it — personal or commercial — as long as the original copyright notice is retained. See the [`LICENSE`](LICENSE) file for the full text.
+> This project is open source under the **MIT License**. You are free to use, modify, and distribute it — personal or commercial — as long as the original copyright notice is retained. The full license text is included in this section.
 
 ---
 

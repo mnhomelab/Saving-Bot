@@ -6,6 +6,7 @@ session/
 
 # Bot persistent state
 bot_settings.json
+wwebjs_cache/
 
 # Year Excel files (personal financial data)
 Saving-Year/

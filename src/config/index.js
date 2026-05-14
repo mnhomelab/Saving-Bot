@@ -3,11 +3,14 @@
 const fs   = require('fs');
 const path = require('path');
 
+const ROOT_DIR = path.resolve(__dirname, '../..');
+const resolveFromRoot = (...parts) => path.resolve(ROOT_DIR, ...parts);
+
 // ── Load .env ─────────────────────────────────────────────────────────────────
 // Native Node.js .env loading (v20.6+) — no dotenv package needed.
 // Falls back silently if .env is missing (e.g. values set via docker-compose env).
 try {
-    require('fs').readFileSync(path.join(__dirname, '.env'), 'utf8')
+    require('fs').readFileSync(resolveFromRoot('.env'), 'utf8')
         .split('\n')
         .forEach(line => {
             const trimmed = line.trim();
@@ -49,15 +52,17 @@ const NOTIFY_NUMBERS = process.env.NOTIFY_NUMBERS
 
 // ── Template path ─────────────────────────────────────────────────────────────
 const TEMPLATE_PATH = process.env.TEMPLATE_PATH
-    ? path.resolve(__dirname, process.env.TEMPLATE_PATH)
-    : path.join(__dirname, 'Template.xlsx');
+    ? path.resolve(ROOT_DIR, process.env.TEMPLATE_PATH)
+    : resolveFromRoot('assets/templates/Template.xlsx');
 
 // ── Year folder (fixed name, all year files live here) ────────────────────────
-const YEAR_FOLDER = path.join(__dirname, 'Saving-Year');
+const YEAR_FOLDER = process.env.YEAR_FOLDER
+    ? path.resolve(ROOT_DIR, process.env.YEAR_FOLDER)
+    : resolveFromRoot('Saving-Year');
 if (!fs.existsSync(YEAR_FOLDER)) fs.mkdirSync(YEAR_FOLDER, { recursive: true });
 
 // ── Persistent settings (bot_settings.json in root folder) ───────────────────
-const SETTINGS_FILE = path.join(__dirname, 'bot_settings.json');
+const SETTINGS_FILE = resolveFromRoot('bot_settings.json');
 
 function _loadSettings() {
     try { return JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8')); }
@@ -98,6 +103,8 @@ function getExcelPath(year) {
 }
 
 module.exports = {
+    ROOT_DIR,
+    resolveFromRoot,
     WHITELIST,
     NOTIFY_NUMBERS,
     TEMPLATE_PATH,

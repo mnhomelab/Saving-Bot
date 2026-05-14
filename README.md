@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="Images/1-Goofy-Bot.png" alt="Gofy Assistant — Your personal finance companion on WhatsApp" width="420"/>
+<img src="assets/images/1-Goofy-Bot.png" alt="Gofy Assistant — Your personal finance companion on WhatsApp" width="420"/>
 
 # 🤖 Saving-Bot-v1.0
 
@@ -126,7 +126,7 @@ Works on: Raspberry Pi 4 (4 GB+) · Mini PC (N100/N5095) · Any Ubuntu VPS · Ol
 A convenience script is included:
 
 ```bash
-bash pre-req/install-docker.sh
+bash scripts/install-docker.sh
 ```
 
 ---
@@ -135,38 +135,36 @@ bash pre-req/install-docker.sh
 
 ```
 Saving-Bot-v1.0/
-├── bot.js                  ← WhatsApp client + message routing + mailer hooks
-├── config.js               ← Loads .env, exposes settings + helpers
-├── handler.js              ← Conversation state machine (all 9 menu options)
-├── excel.js                ← Excel read/write + HTML report generation
-├── scheduler.js            ← Scheduled backup cron jobs + day-end email report
-├── dashboard.js            ← Live web dashboard (Express, SSE, auth, OTP)
-├── editor.js               ← OnlyOffice Document Server integration
-├── mailer.js               ← Email alerts (dark-mode HTML templates)
-├── dashboard_integration.js ← Reference snippet (not required at runtime)
+├── src/
+│   ├── app/
+│   │   └── bot.js                  ← WhatsApp client bootstrap + message routing
+│   ├── config/
+│   │   └── index.js                ← Loads .env, paths, settings + helpers
+│   ├── handlers/
+│   │   └── message-handler.js      ← Conversation state machine (all 9 menu options)
+│   ├── services/
+│   │   ├── dashboard.js            ← Express dashboard, SSE, auth, OTP
+│   │   ├── editor.js               ← OnlyOffice Document Server integration
+│   │   ├── excel.js                ← Excel read/write + HTML report generation
+│   │   ├── mailer.js               ← Email alerts and dark-mode templates
+│   │   └── scheduler.js            ← Scheduled backups + day-end email report
+│   └── shared/                     ← Shared utilities/constants for future modules
+├── assets/
+│   ├── images/                     ← README screenshots
+│   └── templates/
+│       └── Template.xlsx           ← Blank year template (do not modify)
+├── scripts/
+│   └── install-docker.sh           ← Docker install script for Ubuntu/Debian
+├── tests/
+│   └── smoke.test.js               ← Module wiring and path smoke checks
 ├── package.json
-├── docker-compose.yml      ← Two services: saving-bot-v1.0 + onlyoffice-ds
-├── .env                    ← ⚠️ YOUR config — never commit to Git
-├── .env.example            ← Safe template — commit this instead
-├── .gitignore              ← Protects .env, session/, Saving-Year/
-├── README.md
-├── Template.xlsx           ← Blank year template (do not modify)
-├── Images/
-│   ├── 1-Goofy-Bot.png
-│   ├── 2-Opening-the-Bot.png
-│   ├── 3-Entering-an-Expense.png
-│   ├── 4-Expense-Result.png
-│   ├── 5-Viewing_a_Summary.png
-│   ├── 6-Year-Summary.png
-│   └── 7-Year-Wise-Summary.png
-├── pre-req/
-│   └── install-docker.sh   ← Docker install script for Ubuntu/Debian
-├── Saving-Year/
-│   ├── Saving-2026.xlsx    ← Active budget file (and future years)
-│   └── backups/            ← Auto-created: OnlyOffice versioned backups
-├── session/                ← Auto-created: WhatsApp session data
-├── wwebjs_cache/           ← Auto-created: WhatsApp Web version cache
-└── bot_settings.json       ← Auto-created: active year + user prefs
+├── docker-compose.yml              ← Two services: saving-bot-v1.0 + onlyoffice-ds
+├── env.example                     ← Safe template — copy to .env
+├── .env                            ← ⚠️ YOUR config — never commit to Git
+├── Saving-Year/                    ← Auto/local: active budget files + backups
+├── session/                        ← Auto/local: WhatsApp session data
+├── wwebjs_cache/                   ← Auto/local: WhatsApp Web version cache
+└── bot_settings.json               ← Auto/local: active year + user prefs
 ```
 
 ---
@@ -183,7 +181,7 @@ mkdir ~/Saving-Bot-v1.0 && cd ~/Saving-Bot-v1.0
 ### Step 2 — Install Docker (if needed)
 
 ```bash
-bash pre-req/install-docker.sh
+bash scripts/install-docker.sh
 ```
 
 ### Step 3 — Place your Excel file
@@ -191,7 +189,7 @@ bash pre-req/install-docker.sh
 ```bash
 mkdir -p Saving-Year
 cp /path/to/Saving-2026.xlsx Saving-Year/Saving-2026.xlsx
-# Template.xlsx should already be in the root folder
+# assets/templates/Template.xlsx should already exist
 ```
 
 ### Step 4 — Create your `.env` file
@@ -271,7 +269,7 @@ WHITELIST=923111794795,161942429786177,9232441898958,133977293766855
 NOTIFY_NUMBERS=923111794795,9232441898958
 
 # ── Template path ──────────────────────────────────────────────────────────────
-TEMPLATE_PATH=./Template.xlsx
+TEMPLATE_PATH=assets/templates/Template.xlsx
 
 # ── Timezone ───────────────────────────────────────────────────────────────────
 TZ=Asia/Karachi
@@ -301,7 +299,8 @@ ALERT_EMAIL=alert-recipient@gmail.com
 |---|---|---|---|
 | `WHITELIST` | ✅ | hardcoded | Comma-separated numbers (phone + LID formats) |
 | `NOTIFY_NUMBERS` | ✅ | hardcoded | Numbers that receive scheduled Excel backups |
-| `TEMPLATE_PATH` | | `./Template.xlsx` | Path to blank year template |
+| `TEMPLATE_PATH` | | `assets/templates/Template.xlsx` | Path to blank year template |
+| `YEAR_FOLDER` | | `Saving-Year` | Folder containing year workbooks and editor backups |
 | `TZ` | | `Asia/Karachi` | Container timezone |
 | `DASHBOARD_PORT` | | `3001` | Port for dashboard + editor |
 | `DASHBOARD_HOST` | ✅ | auto-detect | Public URL for link generation (e.g. `http://65.x.x.x:3001`) |
@@ -318,13 +317,13 @@ ALERT_EMAIL=alert-recipient@gmail.com
 
 > **Auto-detect fallback:** If `DASHBOARD_HOST`, `ONLYOFFICE_DS_URL`, or `BOT_CALLBACK_HOST` contain `YOUR_SERVER_IP` (the placeholder) or are unset, the bot queries `api.ipify.org` at startup and substitutes the detected public IP. Set these explicitly in production.
 
-### How `config.js` uses it
+### How `src/config/index.js` uses it
 
-`config.js` reads the `.env` file automatically on startup (no extra packages — pure Node.js). If a value is missing from `.env`, it falls back to hardcoded defaults. Docker Compose also passes the `.env` through via `env_file`.
+`src/config/index.js` reads the `.env` file automatically on startup (no extra packages — pure Node.js). If a value is missing from `.env`, it falls back to hardcoded defaults. Docker Compose also passes the `.env` through via `env_file`.
 
 ```
-.env  ──►  config.js  ──►  bot.js / handler.js / scheduler.js / excel.js
-                      ──►  dashboard.js / editor.js / mailer.js
+.env  ──►  src/config/index.js  ──►  src/app/bot.js / src/handlers/message-handler.js
+                                └──►  src/services/*.js
 ```
 
 ### What's protected by `.gitignore`
@@ -336,7 +335,7 @@ bot_settings.json  ← active year + per-user backup prefs
 Saving-Year/       ← your personal Excel budget files and backups
 ```
 
-> ✅ **Safe to commit:** `.env.example`, all `.js` files, `Template.xlsx`, `README.md`, `Images/`
+> ✅ **Safe to commit:** `.env.example`, all `.js` files, `assets/templates/Template.xlsx`, `README.md`, `assets/images/`
 
 ---
 
@@ -416,7 +415,7 @@ docker compose restart saving-bot-v1.0
 ### Option B — Manually
 
 ```bash
-cp Template.xlsx Saving-Year/Saving-2027.xlsx
+cp assets/templates/Template.xlsx Saving-Year/Saving-2027.xlsx
 ```
 
 Then open in Excel:
@@ -488,7 +487,7 @@ Budget worksheet:
 
 ### 1 · Meet Gofy Assistant
 
-<img src="Images/1-Goofy-Bot.png" alt="Gofy Assistant introduction" width="380"/>
+<img src="assets/images/1-Goofy-Bot.png" alt="Gofy Assistant introduction" width="380"/>
 
 > **Your personal finance companion on WhatsApp.**  
 > Open with `Gofy` and manage money simply and stress-free — track expenses, view summaries, export reports, and stay in control of your budget without leaving WhatsApp.
@@ -497,7 +496,7 @@ Budget worksheet:
 
 ### 2 · Opening the Bot
 
-<img src="Images/2-Opening-the-Bot.png" alt="Opening the Bot — main menu" width="380"/>
+<img src="assets/images/2-Opening-the-Bot.png" alt="Opening the Bot — main menu" width="380"/>
 
 > **Type `Gofy` to open the main menu.**  
 > The active year is shown at the top so you always know which file you're working in. Nine options cover every use case. Option 8 dynamically shows **Stop** or **Resume** based on your personal backup preference. Option 9 opens the live monitoring dashboard. Send `0` or `back` at any step to go one level up.
@@ -506,7 +505,7 @@ Budget worksheet:
 
 ### 3 · Entering an Expense — Section View
 
-<img src="Images/3-Entering-an-Expense.png" alt="Section view showing monthly totals per category" width="380"/>
+<img src="assets/images/3-Entering-an-Expense.png" alt="Section view showing monthly totals per category" width="380"/>
 
 > **Every category shows its monthly total so you instantly see what's already been entered.**  
 > Categories with no entries show `—`. Type `?N` to preview the categories inside any section without navigating into it (e.g. `?4` lists all HOME EXPENSES categories). Select a category number to drill in.
@@ -515,7 +514,7 @@ Budget worksheet:
 
 ### 4 · Entering an Expense — Day Selection
 
-<img src="Images/4-Expense-Result.png" alt="Day selection showing previously filled days with values" width="380"/>
+<img src="assets/images/4-Expense-Result.png" alt="Day selection showing previously filled days with values" width="380"/>
 
 > **Previously filled days are listed with their current values before you enter a day.**  
 > This prevents duplicate entries and makes updating existing values straightforward. Enter a day number to add a new entry or overwrite an existing one. Enter `0` to clear the cell.  
@@ -525,7 +524,7 @@ Budget worksheet:
 
 ### 5 · Viewing a Monthly Summary
 
-<img src="Images/5-Viewing_a_Summary.png" alt="Monthly summary with Bank, Petty Cash and Balance sections" width="380"/>
+<img src="assets/images/5-Viewing_a_Summary.png" alt="Monthly summary with Bank, Petty Cash and Balance sections" width="380"/>
 
 > **Three clear sections mirror your Excel structure exactly.**  
 >
@@ -539,9 +538,9 @@ Budget worksheet:
 
 ### 6 · Year Summary
 
-<img src="Images/6-Year-Summary.png" alt="Year summary with Initial Balance and Month-wise Saving" width="380"/>
+<img src="assets/images/6-Year-Summary.png" alt="Year summary with Initial Balance and Month-wise Saving" width="380"/>
 
-<img src="Images/7-Year-Wise-Summary.png" alt="Year-wise summary balance detail" width="380"/>
+<img src="assets/images/7-Year-Wise-Summary.png" alt="Year-wise summary balance detail" width="380"/>
 
 > **Cumulative totals across all months with a month-by-month saving breakdown.**  
 >
@@ -879,7 +878,7 @@ Each resolved conflict (Append, Delete, Change, Replace) triggers an email alert
 | Session lost | `rm -rf session/ && docker compose restart saving-bot-v1.0` then rescan QR |
 | `[object Object]` in report | Formula cell with no cache — bot computes these fresh; check Budget sheet |
 | Petty Cash Left shows 0 | Ensure `pettyCashAvailable` is set in Budget sheet row 11 for at least one month |
-| Excel styling lost on save | ExcelJS fully preserves styles — check you're using the latest `excel.js` |
+| Excel styling lost on save | ExcelJS fully preserves styles — check you're using the latest `src/services/excel.js` |
 | `node-cron not found` | `docker compose down && docker compose up -d` to trigger full npm reinstall |
 | `@lid` blocked messages on startup | Normal — WhatsApp internal sync noise, safely ignored |
 | `.env` changes not taking effect | `docker compose restart saving-bot-v1.0` |

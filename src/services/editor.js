@@ -27,7 +27,7 @@ const path   = require('path');
 const fs     = require('fs');
 const crypto = require('crypto');
 const https  = require('https');
-const { YEAR_FOLDER } = require('./config');
+const { YEAR_FOLDER } = require('../config');
 
 // ── Auto-detect public IP (used as fallback for ONLYOFFICE_DS_URL) ────────────
 let _detectedIp = null;

@@ -2,27 +2,27 @@
 
 const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
-const { handleMessage } = require('./handler');
-const { startScheduler } = require('./scheduler');
-const { WHITELIST } = require('./config');
-const { getMonthReport } = require('./excel');
-const dashboard = require('./dashboard');
-const mailer    = require('./mailer');
+const { handleMessage } = require('../handlers/message-handler');
+const { startScheduler } = require('../services/scheduler');
+const { WHITELIST, resolveFromRoot } = require('../config');
+const { getMonthReport } = require('../services/excel');
+const dashboard = require('../services/dashboard');
+const mailer    = require('../services/mailer');
 
-const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const { FULL_MONTHS } = require('../shared/calendar');
 
 const client = new Client({
-    authStrategy: new LocalAuth({ dataPath: './session' }),
+    authStrategy: new LocalAuth({ dataPath: resolveFromRoot('session') }),
     // Pin WhatsApp Web version — prevents "Execution context was destroyed" on startup
     // when WA Web updates mid-inject. Update this value if auth breaks after a WA update.
     webVersion: '2.3000.1015505012',
     webVersionCache: {
         type:    'local',
-        path:    './wwebjs_cache',
+        path:    resolveFromRoot('wwebjs_cache'),
     },
     puppeteer: {
         headless: true,
-        executablePath: '/usr/bin/chromium',
+        executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium',
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
@@ -37,7 +37,7 @@ const client = new Client({
 // ── Refresh dashboard month summary ──────────────────────────────────────────
 async function refreshDashboardSummary() {
     try {
-        const month = MONTHS[new Date().getMonth()];
+        const month = FULL_MONTHS[new Date().getMonth()];
         const data  = await getMonthReport(month);
         if (data) {
             console.log(`📊 Dashboard summary [${month}]: income=${data.totalIncome} expenses=${data.totalExpenses} canUse=${data.balanceCanUse}`);

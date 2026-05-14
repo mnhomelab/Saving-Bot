@@ -37,10 +37,13 @@ services:
   saving-bot-v1.0:
     image: node:20-slim
     container_name: saving-bot-v1.0
+    hostname: savingbot
     restart: unless-stopped
     working_dir: /app
     networks:
-      - bot-net
+      bot-net:
+        aliases:
+          - savingbot
     ports:
       - "3001:3001"                     # Dashboard + editor port
     volumes:
@@ -51,7 +54,7 @@ services:
     environment:
       - PUPPETEER_SKIP_DOWNLOAD=true
     command: >-
-      sh -c "rm -f /app/session/session/SingletonLock /app/session/session/SingletonCookie /app/session/session/SingletonSocket && apt-get update -qq && apt-get install -y -qq chromium && npm install --quiet && node bot.js"
+      sh -c "rm -f /app/session/session/SingletonLock /app/session/session/SingletonCookie /app/session/session/SingletonSocket && apt-get update -qq && apt-get install -y -qq chromium && npm install --quiet && node src/app/bot.js"
     depends_on:
       onlyoffice-ds:
         condition: service_healthy

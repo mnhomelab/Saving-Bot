@@ -1,7 +1,7 @@
 'use strict';
 
 const ExcelJS = require('exceljs');
-const { getExcelPath } = require('./config');
+const { getExcelPath } = require('../config');
 
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const MONTH_DAYS = {
@@ -1302,7 +1302,7 @@ async function generateMonthHtml(month) {
     const d = allData[month];
     if (!d) return '<html><body>No data found for ' + month + '</body></html>';
 
-    const activeYear = require('./config').getActiveYear() || new Date().getFullYear();
+    const activeYear = require('../config').getActiveYear() || new Date().getFullYear();
     const numDays = MONTH_DAYS[month];
 
     const mainTabJs = `
@@ -1552,7 +1552,7 @@ async function getYearReport() {
 
 // ── Year Template Creator ─────────────────────────────────────────────────────
 async function createYearTemplate(year, templatePath) {
-    const { YEAR_FOLDER } = require('./config');
+    const { YEAR_FOLDER } = require('../config');
     const outputPath = require('path').join(YEAR_FOLDER, `Saving-${year}.xlsx`);
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.readFile(templatePath);

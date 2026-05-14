@@ -2,9 +2,11 @@
   "name": "saving-bot-v1.0",
   "version": "1.0.0",
   "description": "",
-  "main": "bot.js",
+  "main": "src/app/bot.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node src/app/bot.js",
+    "test": "node tests/smoke.test.js",
+    "check": "node --check src/app/bot.js && find src tests -name \"*.js\" -print0 | xargs -0 -n1 node --check"
   },
   "keywords": [],
   "author": "",

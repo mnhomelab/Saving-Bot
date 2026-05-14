@@ -2,9 +2,9 @@
 
 const path = require('path');
 const fs = require('fs');
-const { TEMPLATE_PATH } = require('./config');
-const dashboard = require('./dashboard');
-const { getActiveYear, setActiveYear, getExcelPath, isSchedulerStopped, stopSchedulerForNumber, startSchedulerForNumber } = require('./config');
+const { TEMPLATE_PATH } = require('../config');
+const dashboard = require('../services/dashboard');
+const { getActiveYear, setActiveYear, getExcelPath, isSchedulerStopped, stopSchedulerForNumber, startSchedulerForNumber } = require('../config');
 const {
     MONTHS, MONTH_DAYS, BUDGET_ROWS,
     getSections, loadSectionsFromExcel, bustSectionsCache,
@@ -19,7 +19,7 @@ const {
     readStartingBalance,
     writeStartingBalance,
     createYearTemplate
-} = require('./excel');
+} = require('../services/excel');
 
 // ── Sections & Categories ─────────────────────────────────────────────────────
 // Sections and categories loaded live from Saving-<Year>.xlsx
@@ -1156,7 +1156,7 @@ async function handleMessage(phone, text) {
                 };
             } catch (err) {
                 console.error('Template creation error:', err);
-                return `❌ *Error creating template:* ${err.message}\n_Make sure Template.xlsx is in the bot folder. Send *Gofy* to try again._`;
+                return `❌ *Error creating template:* ${err.message}\n_Make sure assets/templates/Template.xlsx exists or TEMPLATE_PATH is set correctly. Send *Gofy* to try again._`;
             }
         }
         return `⚠️ Reply *1* to create, *2* to change year, *0* to go back.`;

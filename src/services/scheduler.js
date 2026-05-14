@@ -4,11 +4,11 @@ const cron          = require('node-cron');
 const fs            = require('fs');
 const path          = require('path');
 const { MessageMedia } = require('whatsapp-web.js');
-const { NOTIFY_NUMBERS, YEAR_FOLDER } = require('./config');
+const { NOTIFY_NUMBERS, YEAR_FOLDER } = require('../config');
 const mailer = require('./mailer');
 const { getDayReport } = require('./excel');
 
-const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const { FULL_MONTHS } = require('../shared/calendar');
 
 // ── Scheduled times (PKT = Asia/Karachi = UTC+5) ─────────────────────────────
 const SCHEDULES = [
@@ -62,7 +62,7 @@ async function sendDailyFiles(client) {
 async function sendDayEndEmailReport() {
     try {
         const now   = new Date();
-        const month = MONTHS[now.getMonth()];
+        const month = FULL_MONTHS[now.getMonth()];
         const day   = now.getDate();
         console.log(`📧 Day-end report: generating for ${month} day ${day}...`);
         const report = await getDayReport(month, day);

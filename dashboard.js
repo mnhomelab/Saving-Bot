@@ -717,6 +717,13 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 .block-title{font-family:'Syne',sans-serif;font-size:13px;font-weight:700}
 .block-badge{font-size:10px;color:var(--muted);background:var(--surface2);border-radius:6px;padding:2px 8px}
 .block-body{padding:14px 16px}
+.block-action{background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:6px 14px;font-size:12px;font-weight:700;text-decoration:none;transition:border-color .2s,background .2s}
+.block-action:hover{border-color:var(--accent);background:rgba(15,118,110,.12)}
+.backup-status-body{min-height:420px;display:flex;align-items:center;justify-content:center;text-align:center;padding:28px 18px}
+.backup-empty-state{width:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px}
+.backup-empty-art{width:min(360px,70vw);max-width:100%;height:auto;display:block;margin:0 auto;filter:drop-shadow(0 24px 42px rgba(0,0,0,.34))}
+.backup-empty-title{font-family:'Syne',sans-serif;font-size:clamp(18px,3vw,28px);font-weight:800;line-height:1.25;color:var(--text);max-width:820px}
+[data-theme="light"] .backup-empty-art{filter:drop-shadow(0 18px 30px rgba(15,23,42,.18))}
 .fin-row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)}
 .fin-row.fin-last{border:none}
 .fin-label{color:var(--muted)}.fin-val{font-weight:500}
@@ -760,6 +767,49 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
     <div class="stat"><div class="stat-label">Dashboard Viewers</div><div class="stat-value v-yellow" id="s-viewers">—</div><div class="stat-sub">active sessions</div></div>
     <div class="stat"><div class="stat-label">Budget Balance</div><div class="stat-value v-green" id="s-budget">—</div><div class="stat-sub">can use (bank)</div></div>
     <div class="stat"><div class="stat-label">Balance Left</div><div class="stat-value" id="s-left">—</div><div class="stat-sub">have left (bank)</div></div>
+  </div>
+  <div class="block backup-status-card">
+    <div class="block-head">
+      <span class="block-title">💾 Backup Status</span>
+      <a class="block-action" href="/edit">Manage</a>
+    </div>
+    <div class="block-body backup-status-body">
+      <div class="backup-empty-state">
+        <svg class="backup-empty-art" viewBox="0 0 480 360" role="img" aria-labelledby="backup-empty-title-svg" xmlns="http://www.w3.org/2000/svg">
+          <title id="backup-empty-title-svg">No backup alarm illustration</title>
+          <defs>
+            <radialGradient id="backup-glow" cx="50%" cy="46%" r="48%">
+              <stop offset="0%" stop-color="#60a5fa" stop-opacity=".28"/>
+              <stop offset="70%" stop-color="#60a5fa" stop-opacity="0"/>
+            </radialGradient>
+            <linearGradient id="backup-bell" x1="0" x2="1" y1="0" y2="1">
+              <stop stop-color="#93c5fd"/>
+              <stop offset="1" stop-color="#0284c7"/>
+            </linearGradient>
+            <linearGradient id="backup-flame" x1="0" x2="1" y1="0" y2="1">
+              <stop stop-color="#f97316"/>
+              <stop offset="1" stop-color="#ef4444"/>
+            </linearGradient>
+          </defs>
+          <rect width="480" height="360" fill="url(#backup-glow)"/>
+          <path d="M92 279c25-22 19-45 46-66-5 31 28 41 19 75-5 19-22 31-43 31-28 0-43-20-22-40Z" fill="url(#backup-flame)" opacity=".9"/>
+          <path d="M344 292c25-47 9-78 57-114-6 42 43 55 30 106-8 30-34 49-66 49-43 0-64-22-21-41Z" fill="url(#backup-flame)"/>
+          <circle cx="240" cy="173" r="105" fill="#e0f2fe" stroke="#38bdf8" stroke-width="14"/>
+          <circle cx="240" cy="173" r="79" fill="#f8fafc"/>
+          <path d="M177 75c-43 8-72 38-75 78 54-13 85-38 100-67-8-9-16-12-25-11Z" fill="url(#backup-bell)" stroke="#38bdf8" stroke-width="5"/>
+          <path d="M303 75c43 8 72 38 75 78-54-13-85-38-100-67 8-9 16-12 25-11Z" fill="url(#backup-bell)" stroke="#38bdf8" stroke-width="5"/>
+          <path d="M240 173l-44-44" stroke="#0ea5e9" stroke-width="15" stroke-linecap="round"/>
+          <path d="M240 173V106" stroke="#0ea5e9" stroke-width="9" stroke-linecap="round"/>
+          <circle cx="240" cy="173" r="13" fill="#38bdf8"/>
+          <path d="M240 83v16M240 247v16M150 173h16M314 173h16" stroke="#0ea5e9" stroke-width="10" stroke-linecap="round"/>
+          <path d="M86 132v40M86 190v4M394 132v40M394 190v4M48 176v48M48 245v4M432 188v36M432 245v4" stroke="#ef4444" stroke-width="12" stroke-linecap="round"/>
+          <path d="M222 61c-2-26 16-38 34-51-8 24 26 37 4 66" fill="url(#backup-flame)" opacity=".95"/>
+          <path d="M282 62c-4-23 17-32 24-52-2 25 36 34 14 64" fill="url(#backup-flame)" opacity=".9"/>
+        </svg>
+        <div class="backup-empty-title" id="backup-status-title">No backup found. I can't save your data if even you don't care about it 😭</div>
+        <div class="empty" id="backup-status-sub">Checking saved backup files…</div>
+      </div>
+    </div>
   </div>
   <div class="block">
     <div class="block-head"><span class="block-title">⏰ Scheduled Jobs</span><span class="block-badge" id="b-sched-count">—</span></div>
@@ -849,6 +899,27 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 const N=n=>(n||0).toLocaleString('en-PK'),col=n=>n>=0?'v-green':'v-red';
 const fmtT=iso=>new Date(iso).toLocaleTimeString('en-PK',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
 const fmtS=iso=>new Date(iso).toLocaleTimeString('en-PK',{hour:'2-digit',minute:'2-digit'});
+async function renderBackupStatus(){
+  const title=document.getElementById('backup-status-title');
+  const sub=document.getElementById('backup-status-sub');
+  if(!title||!sub)return;
+  try{
+    const d=await fetch('/api/edit/files').then(r=>r.json());
+    const files=Array.isArray(d.files)?d.files:[];
+    const backups=files.reduce((sum,f)=>sum+(Number(f.backups)||0),0);
+    if(backups>0){
+      title.textContent=backups+' backup'+(backups===1?'':'s')+' found. Your data has a safety net ✅';
+      sub.textContent=files.length+' workbook'+(files.length===1?'':'s')+' available in backup management.';
+    }else{
+      title.textContent="No backup found. I can't save your data if even you don't care about it 😭";
+      sub.textContent=files.length?'Open Manage to create a backup before your next edit.':'Open Manage after creating your first workbook.';
+    }
+  }catch(e){
+    title.textContent='Backup status unavailable';
+    sub.textContent='Open Manage to check backup files manually.';
+  }
+}
+
 function render(d){
   const o=d.botOnline;
   document.getElementById('live-pill').className='live-pill'+(o?'':' offline');
@@ -1054,6 +1125,8 @@ function initReportYearSelector(){
 }
 initReportYearSelector();
 loadReport();
+renderBackupStatus();
+setInterval(renderBackupStatus,60_000);
 
 const es=new EventSource('/events');
 let lastDataVersion=null;

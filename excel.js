@@ -95,8 +95,61 @@ let _sectionsCachePath = '';
 const SC_SKIP = /^(Total|%\s*of|\[|Summary|Total Per Day|Total\s*$)/i;
 const SC_PLACEHOLDER = /^<Name-Of-Entry>$/i;
 
-async function loadSectionsFromExcel() {
-    const filePath = getExcelPath();
+function getCellText(cell) {
+    const raw = cell.value;
+    let value = raw;
+    if (raw && typeof raw === 'object') {
+        if (raw.result !== undefined) value = raw.result;
+        else if (raw.text !== undefined) value = raw.text;
+        else if (Array.isArray(raw.richText)) value = raw.richText.map(part => part.text || '').join('');
+        else return '';
+    }
+    return value === null || value === undefined ? '' : String(value).trim();
+}
+
+function isSectionHeaderName(value) {
+    return SECTION_HEADERS.has(value) ||
+        (value === value.toUpperCase() && value.length > 2 && !SC_PLACEHOLDER.test(value));
+}
+
+function pushMappedCategory(sections, rowMap, sectionName, categoryName, rowNumber) {
+    if (!sections[sectionName]) sections[sectionName] = [];
+    let displayName = categoryName;
+    const dupCount = sections[sectionName]
+        .filter(n => n === categoryName || n.startsWith(categoryName + ' (')).length;
+    if (dupCount > 0) displayName = `${categoryName} (${dupCount + 1})`;
+    sections[sectionName].push(displayName);
+    rowMap[`${sectionName}|${displayName}`] = rowNumber;
+}
+
+function buildSectionsFromMonthSheet(ws) {
+    const sections = {};
+    const rowMap = {};
+    let currentSection = null;
+
+    for (let r = 1; r <= 300; r++) {
+        const value = getCellText(ws.getCell(r, 1));
+        if (!value || SC_PLACEHOLDER.test(value)) continue;
+        if (SC_SKIP.test(value)) {
+            if (/^Total\b/i.test(value)) currentSection = null;
+            continue;
+        }
+
+        if (isSectionHeaderName(value)) {
+            currentSection = value;
+            if (!sections[currentSection]) sections[currentSection] = [];
+            continue;
+        }
+
+        if (!currentSection) continue;
+        pushMappedCategory(sections, rowMap, currentSection, value, r);
+    }
+
+    return { sections, rowMap };
+}
+
+async function loadSectionsFromExcel(year) {
+    const filePath = getExcelPath(year);
     if (_sectionsCache && _sectionsCachePath === filePath) return _sectionsCache;
 
     try {
@@ -113,16 +166,12 @@ async function loadSectionsFromExcel() {
         let sectionSCRow = 0;
 
         for (let r = 1; r <= 250; r++) {
-            const raw = scWs.getCell(r, 1).value;
-            if (raw === null || raw === undefined) continue;
-            const val = (typeof raw === 'string' ? raw : String(raw)).trim();
+            const val = getCellText(scWs.getCell(r, 1));
             if (!val) continue;
             if (SC_SKIP.test(val)) continue;  // skip Total / % / [42]
 
             // Detect section header: ALL_CAPS or in SECTION_HEADERS set
-            const isSectionHdr =
-                SECTION_HEADERS.has(val) ||
-                (val === val.toUpperCase() && val.length > 2 && !SC_PLACEHOLDER.test(val));
+            const isSectionHdr = isSectionHeaderName(val);
 
             if (isSectionHdr) {
                 curSection    = val;
@@ -141,6 +190,18 @@ async function loadSectionsFromExcel() {
                    || wb.getWorksheet('January')
                    || wb.getWorksheet(MONTHS[0]);
         if (!janWs) throw new Error('No month worksheet found');
+
+        // Prefer the report sheet's own category rows so sections such as
+        // SUBSCRIPTIONS are mapped exactly as they appear in this workbook.
+        const directMap = buildSectionsFromMonthSheet(janWs);
+        if (Object.keys(directMap.rowMap).length > 0) {
+            for (const [key, row] of Object.entries(directMap.rowMap)) {
+                ROW_MAP[key] = row;
+            }
+            _sectionsCache     = directMap;
+            _sectionsCachePath = filePath;
+            return _sectionsCache;
+        }
 
         // Build Jan col-A map: rowNum → cellValue (strings only)
         // ExcelJS returns formula cells as {formula, result} objects — extract result too.
@@ -224,7 +285,7 @@ async function loadSectionsFromExcel() {
         // Fallback: derive from ROW_MAP keys (safe if file not yet created)
         const sections = {};
         const rowMap   = { ...ROW_MAP };
-        for (const [key, row] of Object.entries(ROW_MAP)) {
+        for (const [key, row] of Object.entries(rowMap)) {
             const [section, category] = key.split('|');
             if (!sections[section]) sections[section] = [];
             sections[section].push(category);
@@ -456,7 +517,7 @@ async function getSectionTotals(month, section, categories) {
 //      This was previously ignored. It is now loaded every month so the HTML
 //      report can display both planned and actual bank balances.
 // ─────────────────────────────────────────────────────────────────────────────
-async function loadMonthData(month, wb) {
+async function loadMonthData(month, wb, rowMap = ROW_MAP) {
     const budgetWs = wb.getWorksheet('Budget');
     const col = BUDGET_MONTH_COL[month];
 
@@ -473,7 +534,7 @@ async function loadMonthData(month, wb) {
     const pettyCashDailyRows = [];
     const dailyData = {};
 
-    for (const [key, row] of Object.entries(ROW_MAP)) {
+    for (const [key, row] of Object.entries(rowMap)) {
         const [section, cat] = key.split('|');
         if (!sectionData[section]) sectionData[section] = {};
         if (!dailyData[section]) dailyData[section] = {};
@@ -1292,14 +1353,16 @@ ${summaryCardsHtml(d)}
 //   1. Bank Balance Monthly Overview table (all 12 months, Can Used vs Have Left)
 //   2. Bank Balance mini card inside each month panel
 // ─────────────────────────────────────────────────────────────────────────────
-async function generateYearHtml() {
+async function generateYearHtml(year) {
+    const reportYear = year || new Date().getFullYear();
+    const rowMap = (await loadSectionsFromExcel(reportYear)).rowMap || ROW_MAP;
     const wb = new ExcelJS.Workbook();
-    await wb.xlsx.readFile(getExcelPath());
+    await wb.xlsx.readFile(getExcelPath(reportYear));
 
     const allData = {};
     let startingBalance = 0;
     for (const month of MONTHS) {
-        const d = await loadMonthData(month, wb);
+        const d = await loadMonthData(month, wb, rowMap);
         if (d) { startingBalance = d.startingBalance; allData[month] = d; }
     }
     computeRunningBalances(allData, startingBalance);
@@ -1322,7 +1385,7 @@ async function generateYearHtml() {
         : { balanceBank: startingBalance, balancePettyBank: startingBalance, pettyCashLeft: 0, balanceHaveLeft: startingBalance };
     const yrPCLeft = lastData.pettyCashLeft;
 
-    const activeYear = require('./config').getActiveYear() || new Date().getFullYear();
+    const activeYear = reportYear;
 
     // Month tab buttons
     const monthBtns = MONTHS.map((m, i) =>

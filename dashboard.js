@@ -353,15 +353,20 @@ app.get('/events', requireSession, (req, res) => {
 app.get('/api/data', requireSession, (_, res) => res.json(snapshot()));
 
 // Live year report (protected) — same output as Export HTML Report → Year Overview
-app.get('/report', requireSession, async (_, res) => {
+// /report always renders Saving-Year/Saving-<current year>.xlsx.
+// /report/:year renders Saving-Year/Saving-<year>.xlsx.
+async function sendYearReport(req, res) {
     try {
         const { generateYearHtml } = require('./excel');
-        const html = await generateYearHtml();
+        const year = req.params.year ? Number(req.params.year) : new Date().getFullYear();
+        const html = await generateYearHtml(year);
         res.send(html);
     } catch (err) {
         res.status(500).send(`<pre style="color:red">Report error: ${err.message}</pre>`);
     }
-});
+}
+app.get('/report', requireSession, sendYearReport);
+app.get('/report/:year(\\d{4})/?', requireSession, sendYearReport);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HTML — LOGIN PAGE
@@ -822,6 +827,8 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
     <div class="block-head">
       <span class="block-title">📊 Year Report</span>
       <div style="display:flex;align-items:center;gap:8px">
+        <select id="rpt-year" onchange="loadReport(true)" title="Report year"
+          style="background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:3px 8px;font-size:11px;font-family:inherit"></select>
         <span id="rpt-status" style="font-size:10px;color:var(--muted)">Loading…</span>
         <button onclick="loadReport(true)"
           style="background:rgba(15,118,110,.15);border:1px solid rgba(15,118,110,.3);color:#94d5cd;
@@ -997,7 +1004,10 @@ async function loadReport(manual=false){
   const status=document.getElementById('rpt-status');
   if(status)status.textContent='Updating…';
   try{
-    const html=await fetch('/report?t='+Date.now()).then(r=>r.text());
+    const year=(document.getElementById('rpt-year')||{}).value||new Date().getFullYear();
+    const currentYear=new Date().getFullYear();
+    const reportPath=Number(year)===currentYear?'/report':'/report/'+encodeURIComponent(year)+'/';
+    const html=await fetch(reportPath+'?t='+Date.now()).then(r=>r.text());
     const host=document.getElementById('rpt-host');
     const parser=new DOMParser();
     const doc=parser.parseFromString(html,'text/html');
@@ -1034,6 +1044,15 @@ async function loadReport(manual=false){
     reportLoading=false;
   }
 }
+function initReportYearSelector(){
+  const sel=document.getElementById('rpt-year');
+  if(!sel)return;
+  const currentYear=new Date().getFullYear();
+  const years=[];
+  for(let y=currentYear-2;y<=currentYear+5;y++)years.push(y);
+  sel.innerHTML=years.map(y=>'<option value="'+y+'"'+(y===currentYear?' selected':'')+'>'+y+'</option>').join('');
+}
+initReportYearSelector();
 loadReport();
 
 const es=new EventSource('/events');
